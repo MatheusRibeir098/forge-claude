@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Ponto de entrada do Forge (Claude Code).
+# Abre o Claude Code (sessão interativa) no repo do Forge.
+# Uso: forge            → sessão interativa (depois digite /forge)
+#      forge "ideia..."  → já entra com um prompt inicial
+# O progresso dos subagentes dev/tester aparece em /tasks e nas notificações da sessão.
+set -euo pipefail
+FORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$FORGE_DIR"
+exec claude "$@"

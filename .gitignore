@@ -1,0 +1,22 @@
+# Dependências
+node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+build/
+*.tsbuildinfo
+
+# Ambiente
+.env
+.env.*
+!.env.example
+
+# Artefatos internos do loop (por projeto)
+projects/*/.forge/screenshots/
+*.log
+
+# SO / editores
+.DS_Store
+.idea/
+.vscode/
