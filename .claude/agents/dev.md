@@ -23,6 +23,20 @@ Sempre inspecione antes de instalar/criar:
   pasta que já tem `package.json`.
 - Falta uma dep específica → adicione **apenas** ela (`pnpm add <dep>`).
 
+## ⚠️ Você pode ter irmãos rodando ao mesmo tempo
+
+O Forge dispara vários `dev` em paralelo quando as tarefas são independentes. Se o briefing
+listar os arquivos que são seus, trate essa lista como **fronteira rígida**:
+
+- Escreva **somente** nos arquivos do briefing. Viu algo errado fora deles? Não conserte —
+  reporte em `pendencias` e siga.
+- Precisa de uma função/tipo que é de outra tarefa? **Não crie sua própria versão** e não
+  edite o arquivo dono dela. Programe contra o contrato que o briefing deu; se ele não
+  existir ainda, devolva `status: BLOQUEADO` explicando o que falta.
+- **Não** rode `pnpm install`/`pnpm add` se o briefing avisar que há agentes em paralelo —
+  dois lockfiles ao mesmo tempo se corrompem. Falta uma dep? `pendencias`.
+- Sempre devolva `arquivos_alterados` completo e honesto — é como o Forge detecta colisão.
+
 ## Scaffolding padrão
 
 - **Frontend**: `pnpm create vite <nome> --template react-ts` + `pnpm add -D tailwindcss @tailwindcss/vite`.

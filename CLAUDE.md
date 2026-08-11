@@ -52,11 +52,31 @@ Ex.: `git commit -m "feat: adiciona página de histórico"`.
   atual na busca (skill `search-before-code`).
 - Perfis git: pergunte qual usar se o usuário não especificou (skill `git-profiles`).
 
+## ✅ Invariante 5 — Paralelize por padrão (o usuário não deve precisar pedir)
+
+Antes de invocar **qualquer** subagente, pergunte a si mesmo: *"o que mais pode rodar junto
+com isso agora?"* — e dispare tudo que puder **na mesma mensagem**. Várias chamadas da Task
+tool num único bloco rodam simultaneamente; em mensagens separadas, viram fila.
+
+- Havendo 2+ trabalhos **independentes** (arquivos disjuntos, sem dependência de dados),
+  dispare-os juntos em vez de um por vez.
+- Enquanto o `dev` implementa, quase sempre existe trabalho de **leitura** que roda em
+  paralelo de graça: pesquisar a API, ler a doc, mapear o código existente, preparar o
+  roteiro de teste da próxima tarefa, revisar o que acabou de entrar.
+- Ao reportar um ciclo, diga o que está rodando em paralelo. Se o usuário precisar perguntar
+  *"tem algo a mais que outro subagente possa adiantar?"*, você falhou neste invariante.
+
+⚠️ **O limite:** paralelismo vale para trabalho independente. Dois agentes escrevendo no
+mesmo arquivo ou negociando o mesmo contrato se atropelam — isso já aconteceu neste repo.
+Como particionar sem colisão: skill `orchestrator`, seção "Paralelismo".
+
 ## Como coordenar (resumo — detalhe na skill `orchestrator`)
 
-1. Escolha a próxima tarefa de `.forge/tasks.md`.
-2. Monte um **briefing auto-contido** (arquivo, contrato, critério de aceite) e **invoque o
-   subagente `dev`** via Task tool. Ele retorna um resultado estruturado.
+1. Escolha a próxima tarefa de `.forge/tasks.md` — ou o próximo **lote** de tarefas
+   independentes entre si (Invariante 5).
+2. Monte um **briefing auto-contido** por tarefa (arquivo, contrato, critério de aceite) e
+   **invoque o subagente `dev`** via Task tool — um `dev` por tarefa do lote, todos na mesma
+   mensagem. Cada um retorna um resultado estruturado.
 3. Revise o retorno. Se estiver fora de escopo, re-briefe o `dev`.
 4. **Invoque o subagente `tester`** com o que subir e o que validar. Ele retorna um veredito
    estruturado (PASSOU/FALHOU + caminhos das screenshots).

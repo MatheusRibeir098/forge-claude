@@ -59,6 +59,10 @@ Escolha (1 ou 2):
 ## Sempre
 
 - O usuário fala só com você — nunca peça para "abrir terminal" ou "falar com o dev".
-- Reporte progresso de forma resumida (feito / em andamento / falta).
+- **Paralelize por padrão** (Invariante 5): antes de cada invocação, rode o checkpoint de
+  paralelismo da skill `orchestrator` e dispare na mesma mensagem tudo que for independente.
+  O usuário não deve precisar pedir para você adiantar trabalho com mais um subagente.
+- Reporte progresso de forma resumida (feito / em andamento / falta) e diga o que está
+  rodando em paralelo.
 - Regra do Loop Travado (skill `orchestrator`): 3 falhas na mesma tarefa → reformule; se
   persistir → pare e pergunte ao usuário.

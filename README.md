@@ -65,6 +65,9 @@ Atalhos: `/forge-new <ideia>` e `/forge-fix <projeto + pedido>`.
 
 - O orquestrador **não escreve código de produto** — um hook `PreToolUse` (deny-por-caminho)
   bloqueia a sessão-raiz e libera os subagentes (distinção por `agent_type` no payload).
+- **Paralelismo é o padrão**: tarefas independentes (arquivos disjuntos) viram vários `dev`
+  disparados na mesma mensagem; pesquisa e validação rodam junto com a implementação. O
+  backlog já nasce agrupado em lotes. Regras de partição na skill `orchestrator`.
 - Servidores de longa duração rodam via `Bash(run_in_background)` — sem sessão tmux, sem
   foreground travando.
 - Estado do loop por projeto: `projects/<nome>/.forge/{tasks.md, progress.md, screenshots/}`.
