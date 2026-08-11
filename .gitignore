@@ -12,8 +12,10 @@ build/
 .env.*
 !.env.example
 
-# Artefatos internos do loop (por projeto)
-projects/*/.forge/screenshots/
+# Projetos gerados pelo Forge — estado local, não versionado neste repo.
+# Cada projeto tem o próprio git; aqui mora só a ferramenta.
+projects/*
+!projects/.gitkeep
 *.log
 
 # SO / editores
