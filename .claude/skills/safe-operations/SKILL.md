@@ -1,6 +1,6 @@
 ---
 name: safe-operations
-description: Use antes de ações que possam derrubar servidores/processos em andamento e antes de analisar uma branch — verificar processos ativos e dar git pull.
+description: Use antes de ações que possam derrubar servidores/processos em andamento, antes de analisar uma branch, e ao rodar comandos cujo output pode ser grande — verificar processos ativos, dar git pull e filtrar output na fonte.
 ---
 
 # Operações Seguras — Proteção de Processos em Andamento
@@ -43,6 +43,28 @@ Aguardando confirmação...
 - Modificar arquivos de frontend (hot-reload não derruba backend)
 - Criar arquivos novos
 - Rodar testes
+
+---
+
+## Regra OBRIGATÓRIA: filtre o output na fonte
+
+Todo comando que você roda entra no contexto e é reenviado a cada turno seguinte. Um
+`pnpm install` verboso ou um `git log` completo custa mais que a tarefa que você está fazendo.
+Corte **antes** de o output existir, não depois:
+
+| Em vez de | Use |
+|---|---|
+| `git log` | `git log --oneline -20` |
+| `git diff` | `git diff --stat` primeiro; o diff completo só do arquivo que importa |
+| `pnpm install` | `pnpm install 2>&1 \| tail -5` |
+| `pnpm build` / `tsc` | `... 2>&1 \| tail -30` (o erro está no fim) |
+| `find .` | `find src -name "*.ts" -not -path "*/node_modules/*"` |
+| `cat arquivo-grande` | `Read` com `offset`/`limit`, ou `grep -n` no trecho |
+| `gh pr view` | `gh pr view --json title,body --jq ...` |
+| Rodar a suite inteira | Só o teste da tarefa atual |
+
+Nunca use `cat` em lockfile, build, `node_modules` ou binário. Se precisa saber se algo
+existe, `test -f` responde em 1 linha; `ls` de uma pasta grande, não.
 
 ---
 

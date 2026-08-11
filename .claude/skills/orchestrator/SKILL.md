@@ -93,10 +93,26 @@ Ficam em `projects/<nome>/.forge/`:
   - [ ] T2 — <título> — depende de: T1
   - [x] T0 — Setup — depende de: nenhuma
   ```
-- **`progress.md`** — log de cada ciclo (append-only). Registra, por tarefa/tentativa: o
-  retorno do `dev` (build_ok, arquivos), o veredito do `tester` (PASSOU/FALHOU + screenshots),
-  e a **contagem de tentativas** (para a regra Loop Travado).
-- **`screenshots/`** — onde o `tester` salva as prints; ele retorna os caminhos.
+- **`progress.md`** — estado da rodada + log dos ciclos. Registra, por tarefa/tentativa: o
+  retorno do `dev` (build_ok, arquivos), o veredito do `tester` (PASSOU/FALHOU + a
+  **descrição** das falhas), e a **contagem de tentativas** (para a regra Loop Travado).
+  **Tem teto** — ver "Rotação do progress.md" abaixo.
+- **`progress-historico.md`** — ciclos antigos, arquivados. **Não é lido no loop**; só sob
+  pedido explícito do usuário ou quando você precisa investigar um problema recorrente.
+- **`screenshots/`** — onde o `tester` salva as prints. Ele as analisa e descreve; **você não
+  as abre** (imagem é o item mais caro do loop). Os caminhos ficam para o usuário.
+
+### Rotação do `progress.md`
+
+O arquivo é lido a cada retomada de sessão, então crescimento sem limite vira custo fixo
+crescente — um projeto de médio porte chega a milhares de tokens só nele.
+
+- Mantenha **o cabeçalho de estado + os ~10 ciclos mais recentes**.
+- Passou disso: mova os mais antigos para `progress-historico.md` (append no fim) e deixe uma
+  linha no lugar: `<!-- ciclos T1–T12 em progress-historico.md -->`.
+- O **cabeçalho de estado** é o que não pode sumir: decisões da rodada, bloqueios abertos,
+  contagem de tentativas das tarefas ainda vivas, pendências de credencial. É ele que te
+  reconstitui numa sessão nova — o log detalhado de ciclos já fechados, não.
 
 Você (Forge) **pode** escrever nesses arquivos de controle — eles não são código de produto.
 Você **não pode** escrever código-fonte (isso é do `dev`).
@@ -141,6 +157,10 @@ Um bom briefing é **auto-contido** — o subagente não tem o histórico da sua
 - **Critério de aceite**: Given/When/Then.
 - **Contexto/padrões**: siga o padrão das rotas/componentes já existentes (cite um exemplo).
 - **Restrições**: o que NÃO fazer.
+- **Skills a consultar**: nomeie **1–2** skills relevantes para esta tarefa (ex.: *"consulte
+  `frontend-tailwind` e `frontend-responsive`; não precisa das outras"*). Você sabe o que a
+  tarefa é; o `dev` não. Sem essa indicação ele carrega várias por precaução, e cada uma
+  custa milhares de tokens no contexto dele.
 
 - **Aviso de concorrência** (quando o lote tem mais de um `dev`): *"você é o único dono de
   `<arquivos>`; não edite nada fora dessa lista, nem rode `pnpm install` — outro agente está
@@ -168,7 +188,10 @@ O `tester` valida **apenas** o que a tarefa implementou (não a suite inteira). 
 
 - **Como subir** o app (use `comandos_para_subir` que o `dev` retornou).
 - **O que validar**: rotas/páginas/estados específicos desta tarefa.
-- **Screenshots**: quais telas/estados capturar (desktop 1280×720 e mobile 375×667).
+- **Screenshots**: nomeie **quais** capturar, com teto explícito (*"no máximo 2: a lista com
+  dados em desktop e o estado de erro"*). Tarefa sem UI → *"nenhuma print; valide por
+  resposta da API"*. Sem teto, o `tester` captura demais e é o gasto mais caro do loop.
+- **Skills a consultar**: 1–2, como no briefing do `dev`.
 
 Ele retorna:
 ```json
@@ -179,8 +202,9 @@ Ele retorna:
 ## Avaliar e fechar o ciclo
 
 - **PASSOU** → marque a tarefa `[x]` em `.forge/tasks.md`, registre o ciclo em
-  `.forge/progress.md` (retorno do dev + veredito + caminhos das screenshots) e vá para a
-  próxima tarefa.
+  `.forge/progress.md` (retorno do dev + veredito + **descrição** das falhas visuais, se
+  houve; não os caminhos das imagens) e vá para a próxima tarefa. Registre em 2–4 linhas —
+  `progress.md` é lido em toda retomada, então prolixidade ali é custo recorrente.
 - **FALHOU** → monte um briefing de correção a partir de `falhas` + `recomendacao_para_dev`
   e volte a invocar o `dev`. Incremente a contagem de tentativas da tarefa em `progress.md`.
 
@@ -214,3 +238,21 @@ e lê o output depois. Não existe mais a sessão tmux `servers`; não há foreg
 - **Nunca deixe um subagente ocioso enquanto há trabalho independente na fila.** Se o usuário
   perguntar "tem algo a mais que outro subagente possa adiantar?", a resposta já deveria ser
   "sim, e já está rodando" — a pergunta é sinal de que você esqueceu o checkpoint.
+
+## Custo — o que sai caro neste loop
+
+Paralelismo e economia não brigam: cada `dev` parte de **contexto limpo**, enquanto um agente
+sequencial arrasta o histórico de todas as tarefas anteriores. Lotes trocam tokens por
+latência no curto prazo e devolvem no longo, via isolamento. O que **de fato** encarece:
+
+| Fonte | Por quê | Regra |
+|---|---|---|
+| **Screenshots** | Uma print pode custar mais que o briefing inteiro, e é reenviada a cada turno se entrar no contexto principal | Teto de 3/tarefa, sem `fullPage`; quem analisa é o `tester`; você lê só o JSON |
+| **Output de comando** | Entra no contexto e é reenviado para sempre | Filtre na fonte (`safe-operations`) |
+| **`progress.md`** | Lido a cada retomada; cresce sem limite se ninguém podar | Teto de ~10 ciclos + histórico à parte |
+| **Skills não pedidas** | O subagente carrega por precaução | Nomeie 1–2 no briefing |
+| **Lote acoplado** | Retrabalho é o desperdício mais caro que existe | Arquivos disjuntos, teto de 3–4 |
+
+Quando o usuário estiver ajustando custo da sessão: decompor tarefas e revisar JSON não
+precisa de effort alto — `/effort medium` serve. Guarde `high`/`xhigh` para quando você
+estiver de fato raciocinando sobre arquitetura ou destravando um Loop Travado.

@@ -64,5 +64,8 @@ Escolha (1 ou 2):
   O usuário não deve precisar pedir para você adiantar trabalho com mais um subagente.
 - Reporte progresso de forma resumida (feito / em andamento / falta) e diga o que está
   rodando em paralelo.
+- **Invariante 6 (custo):** dê ao `tester` um teto explícito de prints (e "nenhuma" quando a
+  tarefa não tem UI), nomeie 1–2 skills em cada briefing, filtre output na fonte e nunca abra
+  as imagens que o `tester` capturou — o JSON dele já traz a falha descrita.
 - Regra do Loop Travado (skill `orchestrator`): 3 falhas na mesma tarefa → reformule; se
   persistir → pare e pergunte ao usuário.

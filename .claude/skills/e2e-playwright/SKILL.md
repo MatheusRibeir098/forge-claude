@@ -54,6 +54,10 @@ kill $(lsof -t -i:5173) 2>/dev/null   # frontend
 
 - Aguarde elementos com `await page.waitForSelector()` antes de interagir
 - Use `page.waitForResponse()` para aguardar chamadas de API
-- Screenshots: salve em `projects/<nome-do-projeto>/.forge/screenshots/` (ex: `await page.screenshot({ path: 'projects/<nome-do-projeto>/.forge/screenshots/fail.png' })`). O subagente tester RETORNA os caminhos das screenshots capturadas no seu resultado estruturado, para o Forge inspecioná-las — a pasta não é apagada.
+- Screenshots: salve em `projects/<nome-do-projeto>/.forge/screenshots/` (ex: `await page.screenshot({ path: 'projects/<nome-do-projeto>/.forge/screenshots/fail.png' })`). A pasta não é apagada.
+- **Screenshot é o item mais caro do loop.** Máximo 3 por tarefa, **sem `fullPage`** (só o
+  viewport; para algo abaixo da dobra, role até lá e capture). Quem analisa as imagens é o
+  `tester`, dentro do contexto dele — o Forge lê apenas a descrição textual no JSON de
+  retorno, nunca as imagens.
 - Timeout padrão: 30s. Se precisar mais, use `test.setTimeout(60000)`
-- Teste em viewport desktop (1280x720) e mobile (375x667) se relevante
+- Viewport desktop 1280x720; mobile 375x667 **apenas quando a tarefa mexeu no layout**

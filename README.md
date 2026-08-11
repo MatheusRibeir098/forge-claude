@@ -77,16 +77,34 @@ revisar e decidir.
 
 ### 📸 Nada passa sem prova
 
-O `tester` não aprova por leitura de código. Ele sobe a aplicação em background, roda E2E
-com Playwright, tira prints em desktop (1280×720) e mobile (375×667), **analisa as imagens**
-e devolve um veredito estruturado. Reprovou? O erro volta para o `dev` como briefing de
-correção, com contagem de tentativas.
+O `tester` não aprova por leitura de código. Ele sobe a aplicação em background, roda E2E com
+Playwright, captura prints do que a tarefa mudou, **analisa as imagens** e devolve um veredito
+estruturado. Reprovou? O erro volta para o `dev` como briefing de correção, com contagem de
+tentativas.
+
+As imagens ficam **dentro do contexto do tester**, que é descartado ao fim da invocação — o
+orquestrador recebe a falha descrita em texto, nunca a imagem. Isso mantém a validação visual
+sem pagar por ela em todo turno seguinte (ver "Barato por construção" abaixo).
+
+### 💰 Barato por construção
+
+Economia de token aqui é decisão de arquitetura, não uma ferramenta instalada por cima:
+
+- **Imagem não entra no contexto principal.** É o item mais caro de um loop agentic; fica
+  isolada no subagente que a analisou. Teto de 3 prints por tarefa, sem `fullPage`.
+- **Skills sob demanda.** O orquestrador nomeia 1–2 skills por briefing; nada de carregar 11
+  "por precaução". No boot, cada skill custa só a sua linha de descrição.
+- **Arquivos de controle com teto.** `progress.md` mantém os ciclos recentes; o resto vai
+  para o histórico, que não é lido no loop.
+- **Output filtrado na fonte** — `--oneline -20`, `| tail`, `--json --jq` — em vez de despejar
+  no contexto e pagar de novo a cada turno.
 
 ### 🧭 Estado em disco, não na memória
 
-Cada projeto carrega `.forge/tasks.md` (backlog e lotes), `.forge/progress.md` (log
-append-only de cada ciclo) e `.forge/screenshots/`. Fechou o notebook no meio? Reabre e
-continua de onde parou — a fonte da verdade está em arquivo, não no histórico da conversa.
+Cada projeto carrega `.forge/tasks.md` (backlog e lotes), `.forge/progress.md` (ciclos
+recentes), `.forge/progress-historico.md` (arquivo) e `.forge/screenshots/`. Fechou o notebook
+no meio? Reabre e continua de onde parou — a fonte da verdade está em arquivo, não no
+histórico da conversa.
 
 ## O time
 
@@ -140,7 +158,7 @@ foreground.
 
 ## As regras da casa
 
-Cinco invariantes valem em qualquer momento da sessão, sempre no contexto (`CLAUDE.md`):
+Seis invariantes valem em qualquer momento da sessão, sempre no contexto (`CLAUDE.md`):
 
 | # | Invariante |
 |---|---|
@@ -149,6 +167,7 @@ Cinco invariantes valem em qualquer momento da sessão, sempre no contexto (`CLA
 | 3 | Mensagens de commit em **português** |
 | 4 | Confirma antes de matar processo; pesquisa antes de usar tecnologia nova |
 | 5 | **Paralelize por padrão** — o usuário não precisa pedir para adiantar trabalho |
+| 6 | **Cada token reenviado é pago de novo** — imagem fora do contexto principal, output filtrado na fonte |
 
 ## Skills incluídas
 
@@ -174,7 +193,7 @@ forge-claude/
 ├── templates/                 # prompt.template.md, .npmrc
 └── projects/<nome>/           # projetos gerados (não versionados aqui)
     ├── prompt.md              # a spec
-    └── .forge/                # tasks.md · progress.md · screenshots/
+    └── .forge/                # tasks.md · progress.md · progress-historico.md · screenshots/
 ```
 
 ## Roadmap
