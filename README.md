@@ -185,6 +185,12 @@ forge-claude/
 
 ---
 
+## Licença
+
+[MIT](LICENSE) © Matheus Ribeiro
+
+---
+
 <div align="center">
 <sub>Construído com <a href="https://claude.com/claude-code">Claude Code</a>.</sub>
 </div>
