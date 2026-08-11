@@ -18,6 +18,10 @@ projects/*
 !projects/.gitkeep
 *.log
 
+# Config local da máquina (identidades, preferências) — nunca versionar
+.claude/settings.local.json
+.claude/*.local.md
+
 # SO / editores
 .DS_Store
 .idea/
