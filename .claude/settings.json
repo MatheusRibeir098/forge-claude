@@ -28,13 +28,14 @@
       "Bash(find:*)"
     ],
     "ask": [
-      "Bash(rm:*)",
-      "Bash(kill:*)",
-      "Bash(pkill:*)",
-      "Bash(killall:*)"
+      "Bash(git push:*)",
+      "Bash(killall:*)",
+      "Bash(rm -r:*)",
+      "Bash(rm -R:*)",
+      "Bash(rm -fr:*)",
+      "Bash(rm -fR:*)"
     ],
     "deny": [
-      "Bash(git push:*)",
       "Bash(cdk deploy:*)",
       "Bash(cdk destroy:*)",
       "Bash(terraform apply:*)",
