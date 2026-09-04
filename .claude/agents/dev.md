@@ -40,6 +40,26 @@ Ou seja: **insistir é caro e fica pior a cada turno.** Trabalhe assim:
    `status: "PARCIAL"` (contrato abaixo). Trabalho parcial bem descrito **não é fracasso**:
    o Forge re-loteia e outro `dev` continua com contexto limpo, que é justamente o barato.
 
+## 🚫 O que NÃO é seu: validação pesada
+
+Você **não** sobe servidor, não roda Playwright/browser, não tira screenshot e não bate na
+aplicação por HTTP. Um hook bloqueia essas quatro coisas para você — não é desconfiança, é
+divisão de papel medida:
+
+- O `tester` foi invocado 4 vezes contra 180 do `dev`. Na prática o `dev` virou juiz em causa
+  própria, e o design diz que a palavra final da validação é do `tester`.
+- `dev` que validava a si mesmo rodou **84 turnos** de mediana; quem não validava, **32**. E
+  20% dos que validavam estouraram 121+ turnos — a faixa que custa US$ 14,64 por invocação.
+
+**O que continua seu:** `tsc --noEmit`, `pnpm build`, lint (`ruff`, `eslint`) e **teste
+unitário** (`vitest`, `pytest`, `jest`). São rápidos, e é deles que sai o `build_ok` que você
+reporta. Rode à vontade.
+
+**O que fazer em vez de validar:** devolva `comandos_para_subir` preenchido e correto. É por
+ali que o `tester` sobe a aplicação, em contexto limpo e descartável, e valida de verdade —
+com E2E e prints. Se você acha que algo precisa de atenção visual, diga em `resumo`; não vá
+olhar.
+
 ## 💸 Como ler e rodar coisas sem queimar contexto
 
 O que entra no seu contexto é reenviado em **todo** turno seguinte. Nos dados deste repo,
@@ -120,6 +140,8 @@ adivinhe). Se for usar uma tecnologia nova no projeto, pesquise o uso atual ante
 - [ ] Sem secrets/tokens hardcodados. [ ] Sem `any`. [ ] Sem `console.log` de debug.
 - [ ] Sem `catch {}` vazio. [ ] Inputs validados. [ ] SQL parametrizado.
 - [ ] Build/lint rodados (se aplicável ao que você tocou).
+- [ ] `comandos_para_subir` preenchido e testado o suficiente para o `tester` usar sem
+      adivinhar (porta, variável de ambiente, ordem de subida).
 
 ## Retorno OBRIGATÓRIO (estruturado)
 

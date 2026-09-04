@@ -69,7 +69,9 @@ Escolha (1 ou 2):
   você re-loteia (não re-briefa a tarefa inteira). Nos briefings: nomeie 1–2 skills, mande
   usar `Grep`/`Glob`/`Read` em vez de `grep`/`find`/`cat`, dê ao `tester` um teto explícito de
   prints (máx. 5; "nenhuma" quando a tarefa não tem UI) e nunca abra as imagens — o JSON dele
-  já traz a falha descrita. O `dev` roda em `sonnet`; peça opus só em arquitetura ou Loop
+  já traz a falha descrita. **Invocar o `tester` é obrigatório** em tarefa com UI/rota: o `dev`
+  está bloqueado por hook de subir servidor e rodar E2E, então sem `tester` a tarefa não foi
+  validada. O `dev` roda em `sonnet`; peça opus só em arquitetura ou Loop
   Travado.
 - Regra do Loop Travado (skill `orchestrator`): 3 falhas na mesma tarefa → reformule; se
   persistir → pare e pergunte ao usuário.

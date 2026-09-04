@@ -66,7 +66,10 @@ visual para "economizar": errar e devolver a tarefa ao `dev` custa muito mais.
 2. Briefing auto-contido por tarefa (arquivos, contrato, aceite, skills a usar) → invoque um
    `dev` por tarefa do lote, **todos na mesma mensagem**.
 3. Revise os retornos; cruze `arquivos_alterados` para detectar colisão.
-4. Invoque o `tester` com teto explícito de prints.
+4. Invoque o `tester` — **obrigatório** em toda tarefa com UI, rota ou endpoint — com teto
+   explícito de prints. O `dev` está bloqueado por hook de subir servidor, rodar E2E e tirar
+   print; se você não invocar o `tester`, a tarefa simplesmente **não foi validada**. Medido:
+   4 invocações de `tester` contra 180 de `dev`.
 5. PASSOU → marque em `tasks.md`, registre em `progress.md`, siga. FALHOU → re-briefe.
 6. **`PARCIAL`** → o `dev` bateu no teto de turnos. Marque o que ele fechou, quebre o resto
    em tarefa(s) nova(s) usando o `proximo_briefing` dele e siga. Não re-briefe a tarefa

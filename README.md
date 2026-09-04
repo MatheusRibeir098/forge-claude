@@ -66,14 +66,25 @@ opinião? Tudo que der "sim" é disparado **na mesma leva**.
 O backlog já nasce agrupado em lotes, com as listas de arquivos cruzadas para garantir que
 dois agentes nunca escrevam no mesmo lugar. Você não precisa pedir para ele acelerar.
 
-### 🔒 Quem orquestra não codifica
+### 🔒 Papel é imposto por hook, não pedido no prompt
 
-Um hook `PreToolUse` bloqueia, por caminho, qualquer tentativa do orquestrador de escrever
-código de produto — e libera os subagentes pela distinção de `agent_type`. Não é uma regra
-no prompt que o modelo pode esquecer: é imposição da ferramenta.
+Três regras que o modelo não pode esquecer, porque não dependem dele:
 
-Resultado: o contexto do orquestrador fica limpo para o que ele faz bem — decompor,
-revisar e decidir.
+| Regra | Como é imposta |
+|---|---|
+| O orquestrador **não escreve código de produto** | `PreToolUse` bloqueia por caminho; subagentes passam pela distinção de `agent_type` |
+| O `dev` **não valida** — não sobe servidor, não roda E2E, não tira print, não bate na app por HTTP | `PreToolUse` nega esses comandos quando `agent_type` é `dev`. Ele mantém `tsc`/`build`/lint/teste unitário, que é o `build_ok` dele |
+| Nenhum subagente passa de **~45 turnos** | contador por `agent_id`; no teto, retorna `PARCIAL` e o Forge re-loteia |
+
+A segunda nasceu de uma medição desconfortável: o `tester` foi invocado **4 vezes contra 180
+do `dev`**, e 78% dos `dev` estavam validando a si mesmos. Além de ser juiz em causa própria,
+sai caro — `dev` que valida rodou 84 turnos de mediana contra 32 de quem não valida, e 20%
+deles estouraram a faixa de 121+ turnos (US$ 14,64 por invocação). A iteração "sobe → testa →
+falha → corrige" acontecia no contexto que é reenviado inteiro a cada turno; no `tester` ela
+roda em contexto limpo e descartável.
+
+Resultado: o contexto do orquestrador fica limpo para o que ele faz bem — decompor, revisar e
+decidir; e o do `dev`, para escrever código.
 
 ### 📸 Nada passa sem prova
 
@@ -183,7 +194,7 @@ Seis invariantes valem em qualquer momento da sessão, sempre no contexto (`CLAU
 | 3 | Mensagens de commit em **português** |
 | 4 | Confirma antes de matar processo; pesquisa antes de usar tecnologia nova |
 | 5 | **Paralelize por padrão** — o usuário não precisa pedir para adiantar trabalho |
-| 6 | **Cada token reenviado é pago de novo** — teto de turnos por subagente, sonnet por padrão, output filtrado na fonte |
+| 6 | **Cada token reenviado é pago de novo** — teto de turnos por subagente, sonnet por padrão, validação delegada ao `tester`, output filtrado na fonte |
 
 ## Skills incluídas
 

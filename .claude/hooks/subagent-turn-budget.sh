@@ -97,6 +97,42 @@ def read_count():
     try: return int(counter.read_text().strip())
     except Exception: return 0
 
+# ---------------------------------------------------------------------------------
+# Validação pesada é papel do `tester`, não do `dev`.
+#
+# Medido nos transcripts: o `tester` foi invocado 4 vezes contra 180 do `dev`, e 78% dos
+# `dev` validavam a si mesmos. Quem valida a si mesmo rodou 84 turnos de mediana contra 32
+# de quem não valida, e 20% deles estouraram 121+ turnos (US$ 334, 39% do custo do grupo).
+# Além do custo, é juiz em causa própria: o design diz que o `tester` é a palavra final.
+#
+# A linha de corte vem da medição do que o `dev` fazia (520 chamadas de papel do tester
+# contra 543 legítimas): ele MANTÉM tsc/build/lint e teste unitário — é o `build_ok` que
+# ele reporta, e é barato. PERDE subir servidor, browser/E2E, screenshot e curl na app.
+if event == "PreToolUse" and agent_type == "dev" and (d.get("tool_name") or "") == "Bash":
+    cmd = (d.get("tool_input") or {}).get("command") or ""
+    bg = bool((d.get("tool_input") or {}).get("run_in_background"))
+    import re as _re
+    PESADO = _re.compile(
+        r"\b(playwright|chromium|puppeteer|selenium"
+        r"|pnpm\s+(dev|start)|npm\s+run\s+(dev|start)|yarn\s+(dev|start)"
+        r"|uvicorn|gunicorn|flask\s+run|next\s+dev|vite(\s|$)|http\.server"
+        r"|tsx\s+src/index)\b", _re.I)
+    if bg or PESADO.search(cmd) or _re.search(r"screenshot", cmd, _re.I) or \
+       _re.search(r"curl[^|;&]*\b(localhost|127\.0\.0\.1|0\.0\.0\.0|:\d{4})", cmd, _re.I):
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": (
+                "Subir servidor, rodar browser/E2E, tirar screenshot ou bater na app por HTTP "
+                "é papel do `tester`, não seu. Entregue o que você implementou com "
+                "`build_ok` (pode e deve rodar tsc/build/lint e teste unitário) e devolva "
+                "`comandos_para_subir` — o Forge invoca o `tester`, que valida em contexto "
+                "limpo e descartável. Validar aqui dobra o tamanho da sua invocação, e o "
+                "contexto reenviado é o maior custo do loop."
+            ),
+        }}))
+        sys.exit(10)
+
 if event == "PostToolUse":
     n = read_count() + 1
     try: counter.write_text(str(n))

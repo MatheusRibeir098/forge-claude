@@ -204,6 +204,27 @@ mensagem**. Cada um retorna:
   corrija o lote no `tasks.md`. Um `dev` bloqueado **não** segura os irmãos: siga com os que
   voltaram OK.
 
+## O `tester` não é opcional
+
+Medido nos transcripts: **4 invocações de `tester` contra 180 de `dev`** — 78% dos `dev`
+acabaram validando a si mesmos. Duas consequências, as duas ruins:
+
+- **Qualidade:** quem escreveu o código virou quem aprova o código. O `tester` existe para ser
+  a palavra final, com E2E e prints, e foi contornado em ~176 tarefas.
+- **Custo:** `dev` que valida a si mesmo rodou 84 turnos de mediana contra 32 de quem não
+  valida, e 20% deles estouraram 121+ turnos (US$ 334, 39% do custo do grupo). Validar dentro
+  do `dev` é caro porque a iteração "sobe → testa → falha → corrige → sobe" acontece no
+  contexto que é reenviado inteiro a cada turno. No `tester` esse mesmo ciclo roda em contexto
+  limpo, que é descartado no fim.
+
+Agora um hook **bloqueia** o `dev` de subir servidor, rodar browser/E2E, tirar screenshot e
+bater na app por HTTP. Ele continua rodando `tsc`/`build`/lint/teste unitário — o `build_ok`.
+Logo: **toda tarefa com UI, rota ou endpoint precisa de uma invocação de `tester`.** Se você
+não invocar, ninguém validou. Use os `comandos_para_subir` que o `dev` devolveu.
+
+Tarefa sem nada observável (refactor puro, tipo, script interno) segue sem `tester` — a prova
+ali é o `build_ok` e a leitura do diff.
+
 ## Briefing para o `tester` (curto e focado)
 
 O `tester` valida **apenas** o que a tarefa implementou (não a suite inteira). Passe:
