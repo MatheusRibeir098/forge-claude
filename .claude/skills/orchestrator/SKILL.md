@@ -226,8 +226,10 @@ regra agora não depende de você ter lido nada:
 - um hook **bloqueia** o `dev` de subir a aplicação, rodar browser/E2E, tirar screenshot e
   bater na app por HTTP (ele mantém `tsc`/`build`/lint/teste unitário e qualquer script
   próprio, inclusive em background — é o `build_ok` que ele reporta);
-- outro hook, no retorno de cada `dev`, **injeta um lembrete** quando os arquivos alterados
-  incluem UI ou rota — no instante exato em que a decisão é sua.
+- outro hook **injeta um lembrete** quando você despacha um `dev` cuja tarefa envolve UI ou
+  rota, avisando que aquela tarefa vai precisar do `tester`. Ele lê o briefing, não o retorno:
+  a invocação de subagente é assíncrona, então no momento em que o hook roda o `dev` ainda
+  está trabalhando (verificado com payload real na CLI 2.1.260).
 
 Logo: **toda tarefa com UI, rota ou endpoint precisa de uma invocação de `tester`.** Se você
 não invocar, ninguém validou. Use os `comandos_para_subir` que o `dev` devolveu.

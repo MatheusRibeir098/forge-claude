@@ -1,25 +1,40 @@
 #!/usr/bin/env python3
-"""PostToolUse (Agent): lembra o orquestrador de validar, no instante em que o `dev` retorna.
+"""PostToolUse (Agent): avisa o orquestrador que a tarefa que ele acabou de despachar
+precisará do `tester`, no instante em que ele despacha o `dev`.
 
-POR QUE AQUI: o loop dev→tester está descrito na skill `orchestrator`, que é carregada sob
-demanda — e foi carregada 6 vezes em 38 sessões (16%). Sem ela o orquestrador improvisa o
-ciclo, e o `tester` é o passo que cai: 4 invocações contra 180 do `dev`. Uma regra a mais no
-prompt não resolve o que 84% das sessões nunca leram; então o lembrete é injetado no único
-momento em que ele é acionável — quando o retorno do `dev` chega.
+POR QUE ESTE LEMBRETE EXISTE: o loop dev→tester está descrito na skill `orchestrator`, que é
+carregada sob demanda — e foi carregada 6 vezes em 38 sessões (16%). Sem ela o orquestrador
+improvisa o ciclo, e o `tester` é o passo que cai: 4 invocações contra 180 do `dev`. Uma
+regra a mais no prompt não resolve o que 84% das sessões nunca leram.
 
-Só dispara quando há algo observável para testar. Das 180 invocações de `dev`, apenas 36
-tocaram UI ou rota/API; nas outras 144 (Python, script, config) o `tester` não se aplica e um
-lembrete seria só ruído.
+POR QUE LÊ O BRIEFING, E NÃO O RETORNO DO DEV — três coisas verificadas com payload real na
+CLI 2.1.260, todas contra o que a intuição sugeria:
+  1. A invocação de subagente é ASSÍNCRONA. O PostToolUse do `Agent` dispara no LANÇAMENTO
+     (`tool_response` = {"isAsync": true, "status": "async_launched"}), então o retorno do
+     `dev` não passa por aqui.
+  2. O retorno existe em `SubagentStop.last_assistant_message` — mas o `additionalContext`
+     emitido no SubagentStop NÃO é injetado no orquestrador (testado: ele respondeu "NADA
+     RECEBIDO"). Além disso o SubagentStop disparou 9 vezes para uma única invocação.
+  3. Logo, o único ponto com injeção que chega ao orquestrador é este. Como aqui só existe a
+     ENTRADA, decidimos pelo briefing: se a tarefa despachada menciona arquivo observável
+     (UI/rota) ou fala de tela/componente/endpoint, o lembrete vale.
+
+Fica em silêncio quando o briefing não tem nada observável. Das 180 invocações de `dev` nos
+transcripts, apenas 36 tocaram UI ou rota/API; nas outras 144 (Python, script, config) o
+`tester` não se aplica e o lembrete seria só ruído.
 """
 import json
 import re
 import sys
 
-UI = re.compile(r"[\w./-]+\.(?:tsx|jsx|vue|svelte|html|css|scss)\b", re.I)
-API = re.compile(
+ARQ_UI = re.compile(r"[\w./-]+\.(?:tsx|jsx|vue|svelte|html|css|scss)\b", re.I)
+ARQ_API = re.compile(
     r"[\w./-]*(?:routes?|api|endpoints?|server|controllers?)[\w./-]*"
     r"\.(?:ts|js|py|go|rb)\b", re.I)
-ABERTO = re.compile(r'"status"\s*:\s*"(?:BLOQUEADO|PARCIAL)"', re.I)
+# rede de segurança para briefing que descreve sem nomear arquivo
+PALAVRAS = re.compile(
+    r"\b(?:componente|tela|p[áa]gina|layout|rota|endpoint|formul[áa]rio|modal|dashboard"
+    r"|responsiv[oa]|dark\s*mode|bot[ãa]o)\b", re.I)
 
 
 def main() -> int:
@@ -28,35 +43,46 @@ def main() -> int:
     except Exception:
         return 0  # payload ilegível nunca atrapalha o trabalho
 
-    # Só a sessão-raiz orquestra; um subagente que chame outro não é o nosso caso.
+    # Só a sessão-raiz orquestra; um subagente que despache outro não é o nosso caso.
     if d.get("agent_id"):
         return 0
-    if ((d.get("tool_input") or {}).get("subagent_type") or "") != "dev":
+
+    inp = d.get("tool_input") or {}
+    if (inp.get("subagent_type") or "") != "dev":
         return 0
 
-    saida = d.get("tool_output")
-    if not isinstance(saida, str):
-        saida = json.dumps(saida, ensure_ascii=False)
-
-    # Trabalho ainda aberto: o orquestrador já tem o que fazer antes de pensar em validação.
-    if ABERTO.search(saida):
+    briefing = " ".join(str(inp.get(k) or "") for k in ("prompt", "description"))
+    if not briefing.strip():
         return 0
 
-    achados = sorted(set(UI.findall(saida)) | {m.group(0) for m in API.finditer(saida)})
-    if not achados:
+    brutos = set(ARQ_UI.findall(briefing)) | {m.group(0) for m in ARQ_API.finditer(briefing)}
+
+    # Normaliza: o mesmo arquivo aparece como caminho absoluto, relativo e nome puro.
+    # Mantemos um por nome, preferindo a forma mais curta.
+    por_nome: dict[str, str] = {}
+    for caminho in brutos:
+        nome = caminho.rsplit("/", 1)[-1]
+        if nome not in por_nome or len(caminho) < len(por_nome[nome]):
+            por_nome[nome] = caminho
+    achados = sorted(por_nome.values(), key=lambda c: (c.count("/"), c))
+
+    if achados:
+        alvo = f"tocando {', '.join(achados[:5])}" + (" …" if len(achados) > 5 else "")
+    elif PALAVRAS.search(briefing):
+        alvo = "com algo observável na descrição"
+    else:
         return 0
 
-    lista = ", ".join(achados[:6]) + (" …" if len(achados) > 6 else "")
     print(json.dumps({"hookSpecificOutput": {
         "hookEventName": "PostToolUse",
         "additionalContext": (
-            f"[validação pendente] O `dev` entregou e tocou arquivo observável ({lista}). "
-            "Invoque o `tester` antes de marcar a tarefa como concluída em tasks.md — passe "
-            "os `comandos_para_subir` que o `dev` devolveu, diga quais telas/rotas validar e "
+            f"[validação pendente] Você despachou um `dev` {alvo}. Quando ele retornar, "
+            "invoque o `tester` ANTES de marcar a tarefa como concluída em tasks.md — passe "
+            "os `comandos_para_subir` que o `dev` devolver, diga quais telas/rotas validar e "
             "o teto de prints (máx. 5). O `dev` está bloqueado por hook de subir servidor e "
-            "rodar E2E, então sem o `tester` esta tarefa não foi validada por ninguém. Se "
-            "houver outro `dev` liberado, dispare os dois na mesma mensagem para rodarem em "
-            "paralelo."
+            "rodar E2E, então sem o `tester` esta tarefa não é validada por ninguém. Se "
+            "houver outro `dev` liberado, dispare-o na mesma mensagem do `tester` para "
+            "rodarem em paralelo."
         ),
     }}))
     return 0

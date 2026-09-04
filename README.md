@@ -75,7 +75,7 @@ Três regras que o modelo não pode esquecer, porque não dependem dele:
 | O orquestrador **não escreve código de produto** | `PreToolUse` bloqueia por caminho; subagentes passam pela distinção de `agent_type` |
 | O `dev` **não valida** — não sobe servidor, não roda E2E, não tira print, não bate na app por HTTP | `PreToolUse` nega esses comandos quando `agent_type` é `dev`. Ele mantém `tsc`/`build`/lint/teste unitário, que é o `build_ok` dele |
 | Nenhum subagente passa de **~45 turnos** | contador por `agent_id`; no teto, retorna `PARCIAL` e o Forge re-loteia |
-| Tarefa com UI ou rota **não fecha sem `tester`** | `PostToolUse` no retorno do `dev` injeta o lembrete quando os arquivos alterados são observáveis |
+| Tarefa com UI ou rota **não fecha sem `tester`** | `PostToolUse(Agent)` lê o briefing despachado e injeta o lembrete quando a tarefa é observável |
 
 As duas últimas nasceram de uma medição desconfortável: o `tester` foi invocado **4 vezes
 contra 180 do `dev`**, e 78% dos `dev` estavam validando a si mesmos. A causa raiz apareceu no
@@ -272,6 +272,27 @@ roda muito teste (234 chamadas de playwright, 229 de tsc, 85 de pytest), mas o o
 é de ~600 a 1.400 chars, porque o Invariante 6 **já manda filtrar na fonte** (`| tail -30`).
 O RTK chega para colher um ganho que o próprio design do Forge já colheu. Ele continua na
 lista porque é risco zero e porque, se o ciclo de teste crescer, o filtro já está no lugar.
+
+## Verificado em sessão real
+
+Os hooks foram exercitados numa sessão real do Forge (`claude -p`, CLI 2.1.260), não só contra
+payloads sintéticos:
+
+- o `dev` **escreve** código (o hook de papéis o libera pelo `agent_type` do payload) e o
+  orquestrador continua bloqueado;
+- o contador de turnos registra por `agent_id`;
+- o lembrete de validação **chega** ao orquestrador — ele o citou textualmente quando
+  perguntado;
+- despachado um `dev` de UI sem nenhuma instrução extra, o orquestrador **invocou o `tester`**,
+  que devolveu veredito. O ciclo que estava quebrado voltou a fechar.
+
+Três coisas só apareceram por medir, e todas contrariavam a intuição: a invocação de subagente
+é **assíncrona** (o `PostToolUse(Agent)` dispara no lançamento, com
+`tool_response: {"isAsync": true}` — o retorno do `dev` não passa por ali); o
+`SubagentStop` tem o retorno em `last_assistant_message`, mas seu `additionalContext` **não é
+injetado** no orquestrador e o evento dispara várias vezes por invocação; e `Write`/`Edit` não
+estão na allowlist, então em modo headless (`-p`) o `dev` é negado por permissão — o que se
+parece com um hook quebrado e não é.
 
 ## Medindo o próprio custo
 
