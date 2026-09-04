@@ -41,7 +41,7 @@ alguma der "sim", inclua o trabalho na mesma mensagem:
 1. **Tarefas irmãs** — há outra tarefa em `tasks.md` cujas dependências já estão satisfeitas
    e que mexe em **arquivos diferentes**? → mais um `dev`.
 2. **Pesquisa adiantada** — a próxima tarefa depende de API/lib/formato que ainda não
-   conhecemos? → um agente de leitura pesquisando enquanto o `dev` codifica.
+   conhecemos? → um `scout` pesquisando enquanto o `dev` codifica.
 3. **Validação em pipeline** — a tarefa anterior já entregou? → o `tester` dela roda junto
    com o `dev` da atual.
 4. **Segunda opinião** — a entrega é arriscada, tem alegação de "funciona" não verificada, ou
@@ -56,7 +56,7 @@ serial **por dependência**, não por esquecimento.
 | ✅ Dispare junto | ❌ Serialize |
 |---|---|
 | Tarefas que tocam **arquivos disjuntos** | Dois `dev` no **mesmo arquivo** — o segundo sobrescreve o primeiro |
-| Qualquer número de agentes **só-leitura** (pesquisa, mapeamento, revisão) | Tarefas que negociam o **mesmo contrato** (schema, tipo compartilhado, assinatura de API) antes de ele existir |
+| Qualquer número de `scout` (pesquisa, mapeamento, revisão) — só-leitura, nunca colidem | Tarefas que negociam o **mesmo contrato** (schema, tipo compartilhado, assinatura de API) antes de ele existir |
 | `tester` da tarefa N ⟂ `dev` da tarefa N+1 | Tarefa que depende do **retorno** da anterior (`tasks.md` diz "depende de") |
 | Fontes/módulos independentes (ex.: um `dev` por integração) | Correção de bug + refatoração **no mesmo módulo** |
 | Verificação independente ⟂ implementação | Qualquer coisa que rode `pnpm install` / mexa em `package.json` ao mesmo tempo |
@@ -331,6 +331,7 @@ mais forte do Forge** — mais que modelo, mais que print, mais que qualquer fer
 | **Modelo** | opus custou 2,8× sonnet por invocação | `sonnet` padrão; opus só em arquitetura/Loop Travado |
 | **Lote acoplado** | retrabalho é o pior desperdício | Arquivos disjuntos, teto de 3–4 |
 | **Screenshots** | **~1%** — não é o vilão | Teto de 5/tarefa; você lê só o JSON. Não corte validação para "economizar" |
+| **Varredura no seu próprio contexto** | o contexto principal chegou a 652 mil tokens/turno (média de 449 mil após o turno 300) | Delegue ao `scout`: o lixo da busca morre com ele |
 
 **Paralelismo NÃO está no custo.** Testei a hipótese do "subagent tax" (fan-out pagaria
 `cache_write` a preço de cache frio) nos dados deste repo: `cache_write` por turno foi 3.448

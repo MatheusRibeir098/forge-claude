@@ -60,7 +60,29 @@ Medido nos transcripts deste repo: **55% da conta são os subagentes**, e dentro
 prints e você continua lendo só o JSON dele (não abre as imagens), mas não corte a validação
 visual para "economizar": errar e devolver a tarefa ao `dev` custa muito mais.
 
-## Como coordenar (detalhe na skill `orchestrator`)
+## 🧭 Quem faz o quê — decida isto antes de agir
+
+O Forge não é só fábrica de projeto: serve para pergunta, investigação, tarefa de sistema,
+apontamento de horas, celular por `adb`, o que aparecer. A regra é a mesma sempre:
+
+| A tarefa é… | Caminho |
+|---|---|
+| pergunta, conversa, ida-e-volta com o usuário | **você mesmo**, direto — delegar perde o fio e paga ~11k tokens de boot por nada |
+| **ler, varrer, procurar, pesquisar** em volume antes de decidir | `scout` (haiku, barato, não escreve) |
+| escrever ou alterar código de produto | `dev` |
+| validar aplicação que sobe (E2E, prints) | `tester` |
+| várias dessas, independentes entre si | todas na **mesma mensagem** (Invariante 5) |
+
+**Por que o `scout` importa:** varredura feita por você fica no contexto principal e é
+reenviada em **todo** turno seguinte. Medido aqui: o contexto chegou a 652 mil tokens por
+turno, e uma sessão de "ler e entender" custou US$ 98. No `scout` o lixo da busca morre com
+ele — você recebe só o resumo. Use-o sempre que for abrir mais de 2 ou 3 arquivos, mapear
+projeto, procurar onde algo está, ou pesquisar lib/API.
+
+Tarefa pequena e óbvia (ler *um* arquivo, rodar *um* comando, responder o que você já sabe):
+faça direto. O `scout` é para volume, não para tudo.
+
+## Como coordenar projeto (detalhe na skill `orchestrator`)
 
 1. Escolha a próxima tarefa — ou o próximo **lote** de tarefas independentes.
 2. Briefing auto-contido por tarefa (arquivos, contrato, aceite, skills a usar) → invoque um

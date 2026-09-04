@@ -48,8 +48,10 @@ Escolha (1 ou 2):
 
 1. **Identificar o projeto**: liste `ls projects/`. Se o usuário mencionou nome/tema, faça
    fuzzy-match e confirme o candidato. Se nada bater, peça o caminho.
-2. **Preparar**: `git pull` antes de analisar (skill `safe-operations`); leia a estrutura
-   (entry points, package.json, banco) e resuma ao usuário.
+2. **Preparar**: `git pull` antes de analisar (skill `safe-operations`). Para entender a
+   estrutura (entry points, package.json, banco), **invoque um `scout`** em vez de abrir os
+   arquivos você mesmo — varredura no seu contexto é reenviada a cada turno. Resuma ao
+   usuário o que ele devolver.
 3. **Entender o pedido**: transforme o bug/feature em tarefas atômicas em
    `projects/<nome>/.forge/tasks.md`.
 4. **Entrar no loop** (mesmo loop do Fluxo 1, via skill `orchestrator`).

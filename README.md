@@ -25,7 +25,8 @@ Você nunca abre um terminal de agente. Nunca fala com o `dev`. Nunca fica olhan
 processo para saber se acabou. Você conversa, ele reporta.
 
 ```
-você ──▶ 🔥 Forge ──┬──▶ 🛠️  dev      escreve todo o código
+você ──▶ 🔥 Forge ──┬──▶ 🔭 scout    lê, varre, pesquisa, e conta em 5 linhas
+                    ├──▶ 🛠️  dev      escreve todo o código
                     └──▶ 🔍 tester   sobe, testa, printa, aprova ou reprova
 ```
 
@@ -48,6 +49,23 @@ você  › só eu, sim, e responsivo
         ✅ T1 schema  ✅ T2 API  ✅ T3 layout    tester: PASSOU (4 prints)
         Lote 2 rodando. Faltam 6 tarefas.
 ```
+
+## Não é só para criar projeto
+
+O Forge serve para o dia a dia: pergunta, investigação, tarefa de sistema, apontamento de
+horas, celular por `adb`. A regra de quem faz o quê é a mesma sempre:
+
+| A tarefa é… | Caminho |
+|---|---|
+| pergunta, conversa, ida-e-volta | o Forge **direto** — delegar perde o fio e paga ~11k tokens de boot por nada |
+| **ler, varrer, procurar, pesquisar** em volume | `scout` |
+| escrever código | `dev` |
+| validar app que sobe | `tester` |
+
+O `scout` existe por um número: quando a varredura acontece na sessão principal, ela é
+reenviada em **todo** turno seguinte — o contexto chegou a **652 mil tokens por turno** aqui, e
+uma sessão de "ler e entender uma lib" custou **US$ 98**. Delegando, o lixo da busca morre com
+o subagente e volta só o resumo. Ele roda em `haiku`, o modelo mais barato do time.
 
 ## Por que ele é diferente
 
@@ -142,6 +160,7 @@ histórico da conversa.
 | Papel | Quem é | Do que é dono |
 |---|---|---|
 | 🔥 **Forge** | a sessão principal | requisitos, spec, decomposição, briefings, revisão, relatório |
+| 🔭 **scout** | subagente (`haiku`) | ler, varrer, procurar, pesquisar — não escreve nada |
 | 🛠️ **dev** | subagente (`sonnet`, opus sob demanda) | **todo** o código de produto |
 | 🔍 **tester** | subagente (`sonnet`) | build, E2E, screenshots, veredito |
 

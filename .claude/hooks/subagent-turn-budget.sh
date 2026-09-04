@@ -77,6 +77,10 @@ if agent_type == "tester":
     # O tester sobe servidor, roda E2E e captura prints: precisa de mais fôlego,
     # e custa pouco (4 invocações = US$ 11 nos dados medidos).
     warn, cap = env_int("FORGE_TESTER_WARN", 30), env_int("FORGE_TESTER_CAP", 45)
+elif agent_type == "scout":
+    # Varredura tem muitas chamadas baratas (Glob/Grep/Read com limit), então o teto é mais
+    # alto — e ele roda em haiku, o modelo mais barato do time.
+    warn, cap = env_int("FORGE_SCOUT_WARN", 28), env_int("FORGE_SCOUT_CAP", 40)
 else:
     warn, cap = env_int("FORGE_TURN_WARN", 18), env_int("FORGE_TURN_CAP", 26)
 
