@@ -215,6 +215,39 @@ forge-claude/
     └── .forge/                # tasks.md · progress.md · progress-historico.md · screenshots/
 ```
 
+## RTK — opcional, e de propósito
+
+O hook de turnos encadeia o [RTK](https://github.com/rtk-ai/rtk) para compactar a saída de
+alguns comandos. **O binário não é versionado**: em máquina nova o hook testa
+`[ -x $RTK_BIN ]` e simplesmente não delega — nada quebra, você só não ganha a compactação.
+Para habilitar:
+
+```bash
+# o install.sh divulgado (rtk-ai.app/install.sh) responde 404 — não use `curl | bash`
+V=0.47.0
+curl -sSLO https://github.com/rtk-ai/rtk/releases/download/v$V/rtk-x86_64-unknown-linux-musl.tar.gz
+curl -sSLO https://github.com/rtk-ai/rtk/releases/download/v$V/checksums.txt
+sha256sum --check --ignore-missing checksums.txt        # confira antes de instalar
+tar -xzf rtk-x86_64-unknown-linux-musl.tar.gz
+install -m 755 rtk ~/.local/bin/rtk                     # ou aponte FORGE_RTK_BIN
+```
+
+**A delegação é restrita a uma lista fechada** (`RTK_OK` no hook): `git status|diff|log|show|
+branch`, `find`, `ls`, `tree` e test runners. Só leitura, só onde o ganho foi medido, e cada
+variante `rtk ...` está liberada na allowlist do `settings.json`.
+
+O motivo da restrição é de segurança, não de gosto: a reescrita acontece **antes** da checagem
+de permissão, então ela troca o comando que as regras de `permissions` vão avaliar. Com o rtk
+reescrevendo livremente, `git push` virava `rtk git push` e **deixava de casar com a regra `ask`
+`Bash(git push:*)`** — furando a imposição do Invariante 2 — e `cat`/`ls`/`find` saíam da
+allowlist, o que geraria prompt de permissão em cada comando do loop.
+
+Quanto isso rende: **~4,5% do volume de Bash** no perfil deste repo (`git status` 76%, `tree`
+98%, `find` 51%, build 17%; `cat`, `sed`, `grep` e `git log` deram **0%**). Os "60–90%"
+anunciados não se reproduzem aqui, porque quem domina o Bash do Forge é justamente `cat`/`sed`/
+`grep`. O ganho de verdade veio das regras de briefing — usar `Grep`/`Glob`/`Read` no lugar
+deles —, não do proxy.
+
 ## Medindo o próprio custo
 
 O Forge traz a régua junto:

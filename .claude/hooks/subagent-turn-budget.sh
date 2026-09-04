@@ -32,6 +32,18 @@
 # Longe dos "60-90%" anunciados — o ganho grande vem das regras de briefing (usar
 # Grep/Glob/Read em vez de grep/find/cat), não do proxy.
 #
+# ⚠️ POR QUE A DELEGAÇÃO É RESTRITA A UMA LISTA (RTK_OK abaixo), e não "tudo que o rtk
+# aceita": a reescrita acontece ANTES da checagem de permissão, então ela troca o comando
+# que as regras de `permissions` vão avaliar. Deixar o rtk reescrever livremente causava
+# dois problemas medidos:
+#   1. `git push` virava `rtk git push` e deixava de casar com a regra `ask`
+#      `Bash(git push:*)` — enfraquecendo a imposição do Invariante 2 (nunca push sozinho).
+#   2. `cat`/`ls`/`find`/`pnpm install` saíam da allowlist (`Bash(cat:*)` não casa com
+#      `rtk read ...`), o que geraria prompt de permissão em cada comando do loop.
+# Então só delegamos comandos que (a) tiveram ganho medido, (b) são de leitura, e (c) têm a
+# variante `rtk ...` explicitamente liberada em .claude/settings.json. Comando fora da lista
+# segue nativo — o rtk nunca decide sozinho o que reescrever aqui.
+#
 # A sessão-raiz (orquestrador) não tem agent_id no payload e é ignorada aqui — seu
 # limite é a compactação da própria sessão, não este contador.
 
@@ -139,8 +151,20 @@ except Exception: raise SystemExit
 print((d.get("hook_event_name") or "") + " " + (d.get("tool_name") or ""))
 ')
 
+# Somente comandos de LEITURA com ganho medido e variante `rtk` liberada no settings.
+# Nada que envolva push, deploy, escrita ou instalação de dependência entra aqui.
+RTK_OK='^(git[[:space:]]+(status|diff|log|show|branch)|find|ls|tree|jest|vitest|pytest|npx[[:space:]]+(jest|vitest|playwright)|pnpm[[:space:]]+exec[[:space:]]+(jest|vitest|playwright))([[:space:]]|$)'
+
 if [ "$event" = "PreToolUse Bash" ] && [ -x "$RTK_BIN" ]; then
-    printf '%s' "$payload" | "$RTK_BIN" hook claude 2>/dev/null || true
+    cmd=$(FORGE_HOOK_PAYLOAD="$payload" python3 -c '
+import json, os
+try: d = json.loads(os.environ["FORGE_HOOK_PAYLOAD"])
+except Exception: raise SystemExit
+print(((d.get("tool_input") or {}).get("command") or "").strip())
+')
+    if printf '%s' "$cmd" | grep -Eq "$RTK_OK"; then
+        printf '%s' "$payload" | "$RTK_BIN" hook claude 2>/dev/null || true
+    fi
 fi
 
 exit 0

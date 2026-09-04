@@ -25,7 +25,19 @@
       "Bash(ls:*)",
       "Bash(mkdir:*)",
       "Bash(cat:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(rtk git status:*)",
+      "Bash(rtk git diff:*)",
+      "Bash(rtk git log:*)",
+      "Bash(rtk git show:*)",
+      "Bash(rtk git branch:*)",
+      "Bash(rtk find:*)",
+      "Bash(rtk ls:*)",
+      "Bash(rtk tree:*)",
+      "Bash(rtk jest:*)",
+      "Bash(rtk vitest:*)",
+      "Bash(rtk pytest:*)",
+      "Bash(rtk playwright:*)"
     ],
     "ask": [
       "Bash(git push:*)",
