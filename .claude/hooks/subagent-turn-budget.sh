@@ -106,19 +106,32 @@ def read_count():
 # Além do custo, é juiz em causa própria: o design diz que o `tester` é a palavra final.
 #
 # A linha de corte vem da medição do que o `dev` fazia (520 chamadas de papel do tester
-# contra 543 legítimas): ele MANTÉM tsc/build/lint e teste unitário — é o `build_ok` que
-# ele reporta, e é barato. PERDE subir servidor, browser/E2E, screenshot e curl na app.
+# contra 543 legítimas): ele MANTÉM tsc/build/lint, teste unitário e qualquer script/processo
+# próprio (inclusive em background) — é o `build_ok` que ele reporta. PERDE apenas subir a
+# APLICAÇÃO, browser/E2E, screenshot e curl na app.
+#
+# A lacuna real é menor do que parece: das 180 invocações de `dev`, só 36 tocaram UI ou
+# rota/API — nas outras 144 (Python, script, config) o `tester` não se aplica. Faltavam
+# ~32 validações, não 176.
 if event == "PreToolUse" and agent_type == "dev" and (d.get("tool_name") or "") == "Bash":
     cmd = (d.get("tool_input") or {}).get("command") or ""
-    bg = bool((d.get("tool_input") or {}).get("run_in_background"))
     import re as _re
-    PESADO = _re.compile(
-        r"\b(playwright|chromium|puppeteer|selenium"
-        r"|pnpm\s+(dev|start)|npm\s+run\s+(dev|start)|yarn\s+(dev|start)"
-        r"|uvicorn|gunicorn|flask\s+run|next\s+dev|vite(\s|$)|http\.server"
-        r"|tsx\s+src/index)\b", _re.I)
-    if bg or PESADO.search(cmd) or _re.search(r"screenshot", cmd, _re.I) or \
-       _re.search(r"curl[^|;&]*\b(localhost|127\.0\.0\.1|0\.0\.0\.0|:\d{4})", cmd, _re.I):
+    # Servidor de aplicação de longa duração — subir a app é do tester.
+    # `run_in_background` por si NÃO entra aqui: medindo as 30 chamadas do `dev`, 21 eram
+    # trabalho legítimo (uv run python -m ..., uv sync, scripts de análise, a suíte
+    # typecheck+lint+test+build). Bloquear a flag quebraria o dev nos projetos Python/CLI.
+    # Duas regras, validadas contra 46 comandos reais dos transcripts (20 que devem
+    # bloquear, 26 que devem passar). Fronteiras importam: sem elas, `vite` casava dentro
+    # de `vitest` e de `vite.config.ts`, e `dev` casava em `grep -rn dev src/`.
+    SERV_BIN = _re.compile(r"(?:^|[\s;&|(])(?:vite(?![\w.\-/])|uvicorn|gunicorn"
+                           r"|next\s+(?:dev|start)|flask\s+run|tsx\s+src/index"
+                           r"|http\.server)", _re.I)
+    SERV_PKG = _re.compile(r"(?:^|[\s;&|(])(?:pnpm|npm|yarn|bun|npx)\s+"
+                           r"(?:run\s+|exec\s+)?(?:dev|start|preview|serve)(?=\s|$)", _re.I)
+    BROWSER = _re.compile(r"\b(playwright|chromium|puppeteer|selenium)\b", _re.I)
+    if (SERV_BIN.search(cmd) or SERV_PKG.search(cmd) or BROWSER.search(cmd)
+            or _re.search(r"screenshot", cmd, _re.I)
+            or _re.search(r"curl[^|;&]*\b(localhost|127\.0\.0\.1|0\.0\.0\.0|:\d{4})", cmd, _re.I)):
         print(json.dumps({"hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",

@@ -75,9 +75,13 @@ Três regras que o modelo não pode esquecer, porque não dependem dele:
 | O orquestrador **não escreve código de produto** | `PreToolUse` bloqueia por caminho; subagentes passam pela distinção de `agent_type` |
 | O `dev` **não valida** — não sobe servidor, não roda E2E, não tira print, não bate na app por HTTP | `PreToolUse` nega esses comandos quando `agent_type` é `dev`. Ele mantém `tsc`/`build`/lint/teste unitário, que é o `build_ok` dele |
 | Nenhum subagente passa de **~45 turnos** | contador por `agent_id`; no teto, retorna `PARCIAL` e o Forge re-loteia |
+| Tarefa com UI ou rota **não fecha sem `tester`** | `PostToolUse` no retorno do `dev` injeta o lembrete quando os arquivos alterados são observáveis |
 
-A segunda nasceu de uma medição desconfortável: o `tester` foi invocado **4 vezes contra 180
-do `dev`**, e 78% dos `dev` estavam validando a si mesmos. Além de ser juiz em causa própria,
+As duas últimas nasceram de uma medição desconfortável: o `tester` foi invocado **4 vezes
+contra 180 do `dev`**, e 78% dos `dev` estavam validando a si mesmos. A causa raiz apareceu no
+próprio dado — a skill `orchestrator`, que descreve o loop `dev → tester`, foi carregada **6
+vezes em 38 sessões**. Regra que vive só numa skill sob demanda não vale para as 84% de
+sessões que nunca a leem; daí a imposição por hook, no instante da decisão. Além de ser juiz em causa própria,
 sai caro — `dev` que valida rodou 84 turnos de mediana contra 32 de quem não valida, e 20%
 deles estouraram a faixa de 121+ turnos (US$ 14,64 por invocação). A iteração "sobe → testa →
 falha → corrige" acontecia no contexto que é reenviado inteiro a cada turno; no `tester` ela
@@ -218,7 +222,8 @@ forge-claude/
 │   ├── commands/{forge,forge-new,forge-fix}.md
 │   ├── hooks/
 │   │   ├── deny-orchestrator-code-edits.sh   # quem orquestra não codifica
-│   │   └── subagent-turn-budget.sh           # teto de turnos por subagente
+│   │   ├── subagent-turn-budget.sh           # teto de turnos + o dev não valida
+│   │   └── require-tester.py                 # lembra de validar quando o dev entrega UI
 │   └── skills/                # 23 skills carregadas sob demanda
 ├── templates/                 # prompt.template.md, .npmrc
 └── projects/<nome>/           # projetos gerados (não versionados aqui)

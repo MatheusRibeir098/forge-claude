@@ -210,15 +210,25 @@ Medido nos transcripts: **4 invocações de `tester` contra 180 de `dev`** — 7
 acabaram validando a si mesmos. Duas consequências, as duas ruins:
 
 - **Qualidade:** quem escreveu o código virou quem aprova o código. O `tester` existe para ser
-  a palavra final, com E2E e prints, e foi contornado em ~176 tarefas.
+  a palavra final, com E2E e prints. A lacuna real é menor do que a razão 4:180 sugere — das
+  180 invocações de `dev`, só **36** tocaram UI ou rota/API; nas outras 144 (Python, script,
+  config) o `tester` não se aplica. Faltaram **~32 validações**, não 176.
 - **Custo:** `dev` que valida a si mesmo rodou 84 turnos de mediana contra 32 de quem não
   valida, e 20% deles estouraram 121+ turnos (US$ 334, 39% do custo do grupo). Validar dentro
   do `dev` é caro porque a iteração "sobe → testa → falha → corrige → sobe" acontece no
   contexto que é reenviado inteiro a cada turno. No `tester` esse mesmo ciclo roda em contexto
   limpo, que é descartado no fim.
 
-Agora um hook **bloqueia** o `dev` de subir servidor, rodar browser/E2E, tirar screenshot e
-bater na app por HTTP. Ele continua rodando `tsc`/`build`/lint/teste unitário — o `build_ok`.
+**A causa raiz é esta skill não ser lida.** Ela foi carregada **6 vezes em 38 sessões (16%)** —
+sem ela o orquestrador improvisa o ciclo, e o `tester` é o primeiro passo a cair. Por isso a
+regra agora não depende de você ter lido nada:
+
+- um hook **bloqueia** o `dev` de subir a aplicação, rodar browser/E2E, tirar screenshot e
+  bater na app por HTTP (ele mantém `tsc`/`build`/lint/teste unitário e qualquer script
+  próprio, inclusive em background — é o `build_ok` que ele reporta);
+- outro hook, no retorno de cada `dev`, **injeta um lembrete** quando os arquivos alterados
+  incluem UI ou rota — no instante exato em que a decisão é sua.
+
 Logo: **toda tarefa com UI, rota ou endpoint precisa de uma invocação de `tester`.** Se você
 não invocar, ninguém validou. Use os `comandos_para_subir` que o `dev` devolveu.
 

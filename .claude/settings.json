@@ -93,6 +93,15 @@
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/subagent-turn-budget.sh"
           }
         ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/require-tester.py"
+          }
+        ]
       }
     ]
   }
