@@ -92,7 +92,7 @@ Três regras que o modelo não pode esquecer, porque não dependem dele:
 |---|---|
 | O orquestrador **não escreve código de produto** | `PreToolUse` bloqueia por caminho; subagentes passam pela distinção de `agent_type` |
 | O `dev` **não valida** — não sobe servidor, não roda E2E, não tira print, não bate na app por HTTP | `PreToolUse` nega esses comandos quando `agent_type` é `dev`. Ele mantém `tsc`/`build`/lint/teste unitário, que é o `build_ok` dele |
-| Nenhum subagente passa de **~45 turnos** | contador por `agent_id`; no teto, retorna `PARCIAL` e o Forge re-loteia |
+| Nenhum subagente estoura o **teto do seu papel** | contador por `agent_id`; no teto, retorna `PARCIAL` e o Forge re-loteia (tabela em [Ajustando o orçamento](#ajustando-o-orçamento-de-turnos)) |
 | Tarefa com UI ou rota **não fecha sem `tester`** | `PostToolUse(Agent)` lê o briefing despachado e injeta o lembrete quando a tarefa é observável |
 
 As duas últimas nasceram de uma medição desconfortável: o `tester` foi invocado **4 vezes
@@ -130,10 +130,11 @@ As 35 sessões deste repo foram medidas token a token (`~/.claude/projects/*/sub
   turnos) a **US$ 14,64** (121+ turnos) — 366×. O contexto do subagente cresce e é reenviado
   inteiro a cada turno, então o custo *por turno* também sobe (5,4× entre as duas faixas).
   Imagem, o suspeito óbvio, deu **~1%**.
-- **Teto de turnos imposto por hook.** ~26 chamadas de ferramenta por `dev` (≈45 turnos). No
-  limite ele devolve `status: PARCIAL` com `feito`/`falta`/`proximo_briefing`, e o
-  orquestrador re-loteia — trabalho parcial bem descrito, não retrabalho. Esse único corte
-  responde por ~76% da conta de subagentes.
+- **Teto de turnos imposto por hook.** ~35 chamadas de ferramenta por `dev` (≈60 turnos), e
+  teto próprio para cada outro papel. No limite ele devolve `status: PARCIAL` com
+  `feito`/`falta`/`proximo_briefing`, e o orquestrador re-loteia — trabalho parcial bem
+  descrito, não retrabalho. Esse único corte vale ~58% da conta de subagentes pela simulação
+  (~76% se apertado para 26, ao custo de cortar acima da mediana).
 - **Sonnet por padrão, opus sob demanda.** Medido, `dev` em opus custou 2,8× por invocação.
   O orquestrador promove só em arquitetura ou destravamento de Loop Travado.
 - **Bash foi 61% do que os subagentes ingeriram.** Os briefings mandam usar `Grep`/`Glob`/
