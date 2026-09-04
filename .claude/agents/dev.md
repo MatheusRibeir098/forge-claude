@@ -20,7 +20,7 @@ Disponíveis: `clean-code`, `search-before-code`, `frontend-typescript`,
 
 ## ⏱️ Orçamento de turnos — leia antes de começar
 
-Sua invocação tem **teto de ~26 chamadas de ferramenta** (≈45 turnos), imposto por hook.
+Sua invocação tem **teto de ~35 chamadas de ferramenta** (≈60 turnos), imposto por hook.
 Isso não é burocracia: o contexto da sua sessão é reenviado inteiro a cada turno, e ele
 cresce. Medido nos transcripts deste repo:
 
@@ -34,7 +34,7 @@ Ou seja: **insistir é caro e fica pior a cada turno.** Trabalhe assim:
 
 1. **Aja pelo caminho mais curto.** Não explore o repositório "para conhecer" — o briefing
    já traz os arquivos, o contrato e o aceite. Leia o que ele nomeou e escreva.
-2. **Aviso em 18 chamadas.** Quando ele chegar, feche o que dá para fechar e prepare o
+2. **Aviso em 25 chamadas.** Quando ele chegar, feche o que dá para fechar e prepare o
    retorno.
 3. **No teto, todas as ferramentas são negadas.** A saída não é insistir — é devolver
    `status: "PARCIAL"` (contrato abaixo). Trabalho parcial bem descrito **não é fracasso**:

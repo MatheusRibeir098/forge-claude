@@ -73,16 +73,37 @@ def env_int(name, default):
     try: return max(int(os.environ[name]), 1)
     except Exception: return default
 
-if agent_type == "tester":
-    # O tester sobe servidor, roda E2E e captura prints: precisa de mais fôlego,
-    # e custa pouco (4 invocações = US$ 11 nos dados medidos).
-    warn, cap = env_int("FORGE_TESTER_WARN", 30), env_int("FORGE_TESTER_CAP", 45)
+# Teto por papel, calibrado pela MEDIANA de chamadas de ferramenta que cada agente gastou
+# nos transcripts — um teto abaixo da mediana estrangula o agente e gera retrabalho, que é o
+# desperdício mais caro que existe. Medido: dev 42, tester 54, visual-dev 99, visual-tester
+# 43, general-purpose 27, scout 6.
+if agent_type.startswith("forge-visual:"):
+    # Fluxo de construção visual: protótipos, iteração de shader, medição de FPS e contraste.
+    # É longo por natureza (visual-dev gastou 99 chamadas de mediana, 152 turnos). O teto aqui
+    # existe só para pegar fuga de controle, não para apertar.
+    if "tester" in agent_type:
+        warn, cap = env_int("FORGE_VISUAL_TESTER_WARN", 50), env_int("FORGE_VISUAL_TESTER_CAP", 70)
+    else:
+        warn, cap = env_int("FORGE_VISUAL_WARN", 100), env_int("FORGE_VISUAL_CAP", 130)
+elif agent_type == "tester":
+    # Sobe servidor, roda E2E e captura prints: precisa de fôlego, e custa pouco
+    # (US$ 2,77 por invocação nos dados medidos). Mediana medida: 54 chamadas.
+    warn, cap = env_int("FORGE_TESTER_WARN", 45), env_int("FORGE_TESTER_CAP", 65)
 elif agent_type == "scout":
-    # Varredura tem muitas chamadas baratas (Glob/Grep/Read com limit), então o teto é mais
-    # alto — e ele roda em haiku, o modelo mais barato do time.
+    # Varredura tem muitas chamadas baratas (Glob/Grep/Read com limit) e roda em haiku, o
+    # modelo mais barato do time. Mediana medida: 6 chamadas — o teto sobra de propósito.
     warn, cap = env_int("FORGE_SCOUT_WARN", 28), env_int("FORGE_SCOUT_CAP", 40)
+elif agent_type == "dev":
+    # A alavanca principal. Mediana medida: 42 chamadas (74 turnos). O teto de 35 (≈60 turnos)
+    # atinge ~54% das invocações e vale ~58% da conta de subagentes pela simulação. É o ponto
+    # CONSERVADOR de propósito: apertar para 26 valeria ~76%, mas corta acima da mediana e o
+    # retrabalho de tarefa partida no meio custa mais que a economia. Aperte com
+    # FORGE_TURN_CAP depois de ver o efeito no `bin/forge-tokens`.
+    warn, cap = env_int("FORGE_TURN_WARN", 25), env_int("FORGE_TURN_CAP", 35)
 else:
-    warn, cap = env_int("FORGE_TURN_WARN", 18), env_int("FORGE_TURN_CAP", 26)
+    # Agentes genéricos (general-purpose, Explore, agentes de outros plugins): mediana medida
+    # de 27 chamadas. Tratados como leitura/pesquisa.
+    warn, cap = env_int("FORGE_OUTRO_WARN", 30), env_int("FORGE_OUTRO_CAP", 40)
 
 state = pathlib.Path(os.environ["FORGE_STATE_DIR"])
 try:

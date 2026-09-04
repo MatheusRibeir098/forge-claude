@@ -67,7 +67,7 @@ Escolha (1 ou 2):
 - Reporte progresso de forma resumida (feito / em andamento / falta) e diga o que está
   rodando em paralelo.
 - **Invariante 6 (custo):** o gasto dominante é **turno dentro de subagente**, então
-  decomponha de verdade — tarefa que não cabe em ~26 chamadas de ferramenta volta `PARCIAL` e
+  decomponha de verdade — tarefa que não cabe em ~35 chamadas de ferramenta volta `PARCIAL` e
   você re-loteia (não re-briefa a tarefa inteira). Nos briefings: nomeie 1–2 skills, mande
   usar `Grep`/`Glob`/`Read` em vez de `grep`/`find`/`cat`, dê ao `tester` um teto explícito de
   prints (máx. 5; "nenhuma" quando a tarefa não tem UI) e nunca abra as imagens — o JSON dele

@@ -126,7 +126,7 @@ fluxo fix):
 
 1. Leia o `prompt.md` (criar) ou a descrição do bug/feature (fix).
 2. Quebre em **tarefas atômicas**, cada uma:
-   - completável em **~26 chamadas de ferramenta** pelo `dev` (o teto do hook) — na prática,
+   - completável em **~35 chamadas de ferramenta** pelo `dev` (o teto do hook) — na prática,
      1 a 3 arquivos e um contrato só;
    - com critério de aceitação próprio (Given/When/Then — ver skill `spec-driven`);
    - listando os arquivos que serão criados/alterados;

@@ -330,16 +330,26 @@ promessa de quem vende a otimização.
 
 ## Ajustando o orçamento de turnos
 
-O teto vem calibrado pelos dados deste repo (razão medida: 1,73 turno por chamada de
-ferramenta). Para afrouxar ou apertar, sem editar o hook:
+Cada papel tem teto próprio, calibrado pela **mediana de chamadas de ferramenta que ele
+gastou de verdade** nos transcripts. Teto abaixo da mediana estrangula o agente e gera
+retrabalho — que é o desperdício mais caro que existe:
 
-```bash
-FORGE_TURN_WARN=18  FORGE_TURN_CAP=26   # dev (padrão) — ≈31 e ≈45 turnos
-FORGE_TESTER_WARN=30 FORGE_TESTER_CAP=45 # tester (padrão) — ele sobe servidor e roda E2E
-```
+| agente | mediana medida | teto | variável |
+|---|---|---|---|
+| `scout` | 6 | 40 | `FORGE_SCOUT_CAP` |
+| `dev` | 42 | **35** | `FORGE_TURN_CAP` |
+| `tester` | 54 | 65 | `FORGE_TESTER_CAP` |
+| `forge-visual:visual-tester` | 43 | 70 | `FORGE_VISUAL_TESTER_CAP` |
+| `forge-visual:visual-dev` | 99 | 130 | `FORGE_VISUAL_CAP` |
+| outros (`general-purpose`, `Explore`, plugins) | 27 | 40 | `FORGE_OUTRO_CAP` |
 
-Tetos mais folgados, com a economia estimada sobre os mesmos dados: 40 turnos → ~76% da conta
-de subagentes; 60 → ~58%; 80 → ~42%.
+O `dev` é o único **abaixo** da mediana, e isso é deliberado: é ali que está a alavanca, e o
+`PARCIAL` existe para que cortar não signifique perder trabalho. 35 chamadas (≈60 turnos) é o
+ponto conservador — vale ~58% da conta de subagentes pela simulação. Apertar para 26 valeria
+~76%, mas corta bem acima da mediana; aperte com `FORGE_TURN_CAP` depois de ver o efeito no
+`bin/forge-tokens`.
+
+A conversão é a razão medida aqui: **1,73 turno por chamada de ferramenta**.
 
 ## Roadmap
 
