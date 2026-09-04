@@ -16,7 +16,7 @@ Você (Forge / orquestrador)
   ├─ lê prompt.md + .forge/tasks.md → escolhe a próxima tarefa
   ├─ monta briefing auto-contido
   ├─ invoca subagente `dev`     → recebe retorno estruturado (JSON)
-  ├─ revisa o retorno
+  ├─ revisa o retorno (OK / PARCIAL → re-loteia / BLOQUEADO → pergunta)
   ├─ invoca subagente `tester`  → recebe veredito estruturado (JSON)
   └─ avalia → marca done / re-briefa → registra em .forge/progress.md
 ```
@@ -100,7 +100,9 @@ Ficam em `projects/<nome>/.forge/`:
 - **`progress-historico.md`** — ciclos antigos, arquivados. **Não é lido no loop**; só sob
   pedido explícito do usuário ou quando você precisa investigar um problema recorrente.
 - **`screenshots/`** — onde o `tester` salva as prints. Ele as analisa e descreve; **você não
-  as abre** (imagem é o item mais caro do loop). Os caminhos ficam para o usuário.
+  as abre** — não porque a imagem seja caríssima (medido: ~1% do loop), mas porque a análise
+  visual é dele e o seu contexto é reenviado em todo turno da sessão. Os caminhos ficam para
+  o usuário.
 
 ### Rotação do `progress.md`
 
@@ -124,10 +126,16 @@ fluxo fix):
 
 1. Leia o `prompt.md` (criar) ou a descrição do bug/feature (fix).
 2. Quebre em **tarefas atômicas**, cada uma:
-   - completável numa única invocação do `dev`;
+   - completável em **~26 chamadas de ferramenta** pelo `dev` (o teto do hook) — na prática,
+     1 a 3 arquivos e um contrato só;
    - com critério de aceitação próprio (Given/When/Then — ver skill `spec-driven`);
    - listando os arquivos que serão criados/alterados;
    - dependendo só de tarefas anteriores.
+
+   **Teste de atomicidade:** se você não consegue nomear os arquivos e o contrato em três
+   linhas, a tarefa não é atômica — quebre mais. O sinal de que errou aparece depois no
+   retorno: nos dados deste repo houve invocações com **38 `Edit` no mesmo arquivo**, o que
+   nunca é "trabalho difícil", é sempre tarefa grande demais entregue como uma só.
 3. **Agrupe em lotes paralelos**: percorra as tarefas e marque quais podem sair juntas —
    dependências satisfeitas e listas de arquivos disjuntas. Anote o lote na própria tarefa
    (`— lote: L2`). O backlog já nasce paralelizável em vez de você redescobrir isso a cada
@@ -165,15 +173,29 @@ Um bom briefing é **auto-contido** — o subagente não tem o histórico da sua
 - **Aviso de concorrência** (quando o lote tem mais de um `dev`): *"você é o único dono de
   `<arquivos>`; não edite nada fora dessa lista, nem rode `pnpm install` — outro agente está
   trabalhando em paralelo."*
+- **Como ler**: mande usar `Grep`/`Glob`/`Read` (com `limit` em arquivo grande) em vez de
+  `grep`/`find`/`cat` via Bash, e não reler o que já leu. Bash foi 61% de tudo que os
+  subagentes ingeriram neste repo; `cat` custou em média 3,5× uma busca.
+- **Modelo**: o `dev` roda em `sonnet` por padrão. Se — e só se — a tarefa for de
+  arquitetura, contrato compartilhado difícil ou destravamento de Loop Travado, diga no
+  briefing que é para rodar em opus (opus custou 2,8× por invocação nos dados medidos).
 
 Invoque o subagente `dev` passando esse briefing — **um por tarefa do lote, todos na mesma
 mensagem**. Cada um retorna:
 ```json
-{ "status": "OK|BLOQUEADO", "arquivos_alterados": [...], "build_ok": true,
-  "comandos_para_subir": [...], "resumo": "...", "pendencias": [...] }
+{ "status": "OK|PARCIAL|BLOQUEADO", "arquivos_alterados": [...], "build_ok": true,
+  "comandos_para_subir": [...], "resumo": "...",
+  "feito": [...], "falta": [...], "proximo_briefing": "...",
+  "pendencias": [...] }
 ```
 
 ### Revisão do retorno do dev
+- `status: PARCIAL` → ele bateu no teto de turnos (ou a tarefa era maior do que o briefing
+  supunha). **Não é falha e não se re-briefa a tarefa inteira.** Faça três coisas: marque em
+  `tasks.md` o que `feito` entrega; crie tarefa(s) nova(s) a partir de `falta`, já com o
+  `proximo_briefing` dele embutido (é o que evita redescobrir o que ele já descobriu); e
+  registre em `progress.md` que a tarefa foi re-loteada — se a **mesma** tarefa voltar
+  `PARCIAL` duas vezes, o problema é a sua decomposição, não o teto: quebre bem menor.
 - `status: BLOQUEADO` → leia `pendencias`. Se for decisão de produto, **pergunte ao usuário**.
 - `build_ok: false` → re-briefe com foco no erro (e acione a skill `search-before-code`).
 - Fora do escopo / código duvidoso → re-briefe apontando o desvio.
@@ -190,7 +212,9 @@ O `tester` valida **apenas** o que a tarefa implementou (não a suite inteira). 
 - **O que validar**: rotas/páginas/estados específicos desta tarefa.
 - **Screenshots**: nomeie **quais** capturar, com teto explícito (*"no máximo 2: a lista com
   dados em desktop e o estado de erro"*). Tarefa sem UI → *"nenhuma print; valide por
-  resposta da API"*. Sem teto, o `tester` captura demais e é o gasto mais caro do loop.
+  resposta da API"*. O teto máximo dele é 5. Print custa ~1% do loop, então o teto serve para
+  manter o `tester` focado no que a tarefa mudou — **não** para economizar: aprovar errado e
+  devolver a tarefa ao `dev` custa muito mais que uma imagem.
 - **Skills a consultar**: 1–2, como no briefing do `dev`.
 
 Ele retorna:
@@ -207,6 +231,9 @@ Ele retorna:
   `progress.md` é lido em toda retomada, então prolixidade ali é custo recorrente.
 - **FALHOU** → monte um briefing de correção a partir de `falhas` + `recomendacao_para_dev`
   e volte a invocar o `dev`. Incremente a contagem de tentativas da tarefa em `progress.md`.
+- **PARCIAL** (do `dev`, antes do tester) → re-loteie como descrito em "Revisão do retorno do
+  dev". Se o que ele fechou já é testável por si, mande o `tester` nesse pedaço em paralelo
+  com o `dev` da continuação.
 
 Feche por tarefa, **não** espere o lote inteiro: cada tarefa que passa já é marcada e libera
 o que dependia dela. E antes de disparar o próximo lote, rode o **checkpoint de paralelismo**
@@ -239,19 +266,42 @@ e lê o output depois. Não existe mais a sessão tmux `servers`; não há foreg
   perguntar "tem algo a mais que outro subagente possa adiantar?", a resposta já deveria ser
   "sim, e já está rodando" — a pergunta é sinal de que você esqueceu o checkpoint.
 
-## Custo — o que sai caro neste loop
+## Custo — o que sai caro neste loop (medido, não estimado)
 
-Paralelismo e economia não brigam: cada `dev` parte de **contexto limpo**, enquanto um agente
-sequencial arrasta o histórico de todas as tarefas anteriores. Lotes trocam tokens por
-latência no curto prazo e devolvem no longo, via isolamento. O que **de fato** encarece:
+Os 35 transcripts deste repo (ago–set/2026) foram medidos: 2,65 bilhões de tokens
+processados, dos quais **55% são os subagentes**. Dentro dos subagentes, **55% do custo é
+`cache_read`** — contexto reenviado turno a turno.
 
-| Fonte | Por quê | Regra |
+O ponto contraintuitivo: é verdade que cada `dev` **começa** com contexto limpo, mas ele não
+**permanece** limpo. O custo não desaparece no fan-out — ele migra para dentro do subagente,
+onde cresce mais rápido porque ninguém o poda:
+
+| turnos na invocação | n | custo médio/invocação | tokens processados/invocação |
+|---|---|---|---|
+| 1–10 | 5 | US$ 0,04 | 26 mil |
+| 11–30 | 21 | US$ 1,09 | 777 mil |
+| 31–60 | 49 | US$ 2,61 | 2,29 mi |
+| 61–120 | 93 | US$ 5,65 | 6,83 mi |
+| **121+** | **38** | **US$ 14,64** | **22,35 mi** |
+
+Da primeira faixa à última: **366× por invocação.** Confira você mesmo com `bin/forge-tokens`.
+
+O `dev` rodava com **mediana de 76 turnos** (p90 138, máximo 301). Por isso existe o teto por
+hook: ele responde por ~76% da conta de subagentes. **Sua decomposição é a alavanca de custo
+mais forte do Forge** — mais que modelo, mais que print, mais que qualquer ferramenta.
+
+| Fonte | Peso medido | Regra |
 |---|---|---|
-| **Screenshots** | Uma print pode custar mais que o briefing inteiro, e é reenviada a cada turno se entrar no contexto principal | Teto de 3/tarefa, sem `fullPage`; quem analisa é o `tester`; você lê só o JSON |
-| **Output de comando** | Entra no contexto e é reenviado para sempre | Filtre na fonte (`safe-operations`) |
-| **`progress.md`** | Lido a cada retomada; cresce sem limite se ninguém podar | Teto de ~10 ciclos + histórico à parte |
-| **Skills não pedidas** | O subagente carrega por precaução | Nomeie 1–2 no briefing |
-| **Lote acoplado** | Retrabalho é o desperdício mais caro que existe | Arquivos disjuntos, teto de 3–4 |
+| **Turnos por invocação** | o dominante | Tarefa atômica de verdade; `PARCIAL` no teto e re-loteio |
+| **Bash** | 61% do que os subagentes ingeriram | No briefing: `Grep`/`Glob`/`Read` em vez de `grep`/`find`/`cat`; filtrar na fonte |
+| **`Read` de arquivo inteiro** | 31% do ingerido; 74% das leituras sem `limit` | No briefing: nomeie os arquivos e mande usar `limit`/`offset`; proíba releitura |
+| **Modelo** | opus custou 2,8× sonnet por invocação | `sonnet` padrão; opus só em arquitetura/Loop Travado |
+| **Lote acoplado** | retrabalho é o pior desperdício | Arquivos disjuntos, teto de 3–4 |
+| **Screenshots** | **~1%** — não é o vilão | Teto de 5/tarefa; você lê só o JSON. Não corte validação para "economizar" |
+
+**Paralelismo NÃO está no custo.** Testei a hipótese do "subagent tax" (fan-out pagaria
+`cache_write` a preço de cache frio) nos dados deste repo: `cache_write` por turno foi 3.448
+em invocações solo e 3.349 em lote. Sem penalidade detectável. Mantenha o Invariante 5.
 
 Quando o usuário estiver ajustando custo da sessão: decompor tarefas e revisar JSON não
 precisa de effort alto — `/effort medium` serve. Guarde `high`/`xhigh` para quando você

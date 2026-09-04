@@ -64,8 +64,12 @@ Escolha (1 ou 2):
   O usuário não deve precisar pedir para você adiantar trabalho com mais um subagente.
 - Reporte progresso de forma resumida (feito / em andamento / falta) e diga o que está
   rodando em paralelo.
-- **Invariante 6 (custo):** dê ao `tester` um teto explícito de prints (e "nenhuma" quando a
-  tarefa não tem UI), nomeie 1–2 skills em cada briefing, filtre output na fonte e nunca abra
-  as imagens que o `tester` capturou — o JSON dele já traz a falha descrita.
+- **Invariante 6 (custo):** o gasto dominante é **turno dentro de subagente**, então
+  decomponha de verdade — tarefa que não cabe em ~26 chamadas de ferramenta volta `PARCIAL` e
+  você re-loteia (não re-briefa a tarefa inteira). Nos briefings: nomeie 1–2 skills, mande
+  usar `Grep`/`Glob`/`Read` em vez de `grep`/`find`/`cat`, dê ao `tester` um teto explícito de
+  prints (máx. 5; "nenhuma" quando a tarefa não tem UI) e nunca abra as imagens — o JSON dele
+  já traz a falha descrita. O `dev` roda em `sonnet`; peça opus só em arquitetura ou Loop
+  Travado.
 - Regra do Loop Travado (skill `orchestrator`): 3 falhas na mesma tarefa → reformule; se
   persistir → pare e pergunte ao usuário.

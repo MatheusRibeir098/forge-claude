@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""forge-tokens — mede o consumo real das sessões do Forge a partir dos transcripts.
+
+Lê ~/.claude/projects/<projeto>/*.jsonl (orquestrador) e
+     ~/.claude/projects/<projeto>/<sessao>/subagents/*.jsonl (subagentes)
+e reporta onde o token foi gasto: orquestrador vs subagentes, custo por tipo de
+subagente, e a curva de custo por faixa de turnos — que é a alavanca principal.
+
+Uso:
+    bin/forge-tokens                    # todas as sessões do repo do Forge
+    bin/forge-tokens --desde 2026-09-04 # só a partir de uma data (para comparar antes/depois)
+    bin/forge-tokens --projeto <slug>   # outro diretório de projeto do Claude Code
+    bin/forge-tokens --json             # saída em JSON
+
+O custo é a preço de lista da API (Opus 5 $5/$25, Sonnet 5 $2/$10, Haiku 4.5 $1/$5,
+cache read 0,1x input, cache write 1,25x em TTL de 5min e 2x em TTL de 1h). Num plano
+de assinatura você não paga isso — o valor serve para comparar as partes entre si.
+"""
+import argparse, collections, glob, json, os, statistics, sys
+
+PRECO = {"opus": (5.0, 25.0), "sonnet": (2.0, 10.0), "haiku": (1.0, 5.0)}
+FAIXAS = [(1, 10), (11, 30), (31, 60), (61, 120), (121, 10**9)]
+
+
+def familia(modelo: str) -> str:
+    m = (modelo or "").lower()
+    if "haiku" in m:
+        return "haiku"
+    if "sonnet" in m:
+        return "sonnet"
+    return "opus"
+
+
+def varre(caminho: str, desde: str | None):
+    """Retorna (tokens, custo, turnos) de um transcript."""
+    tok = collections.Counter()
+    custo = 0.0
+    turnos = 0
+    for linha in open(caminho, errors="replace"):
+        try:
+            d = json.loads(linha)
+        except ValueError:
+            continue
+        if d.get("type") != "assistant":
+            continue
+        if desde and (d.get("timestamp") or "") < desde:
+            continue
+        msg = d.get("message") or {}
+        u = msg.get("usage") or {}
+        if not u:
+            continue
+        turnos += 1
+        p_in, p_out = PRECO[familia(msg.get("model"))]
+        entrada = u.get("input_tokens", 0) or 0
+        saida = u.get("output_tokens", 0) or 0
+        leitura = u.get("cache_read_input_tokens", 0) or 0
+        escrita = u.get("cache_creation_input_tokens", 0) or 0
+        tok["entrada"] += entrada
+        tok["saida"] += saida
+        tok["cache_read"] += leitura
+        tok["cache_write"] += escrita
+
+        cc = u.get("cache_creation") or {}
+        w5 = cc.get("ephemeral_5m_input_tokens")
+        w1 = cc.get("ephemeral_1h_input_tokens")
+        if w5 is not None or w1 is not None:
+            w5, w1 = w5 or 0, w1 or 0
+            custo_escrita = w5 / 1e6 * p_in * 1.25 + w1 / 1e6 * p_in * 2.0
+            custo_escrita += max(escrita - w5 - w1, 0) / 1e6 * p_in * 1.25
+        else:
+            custo_escrita = escrita / 1e6 * p_in * 1.25
+
+        custo += entrada / 1e6 * p_in + saida / 1e6 * p_out
+        custo += leitura / 1e6 * p_in * 0.1 + custo_escrita
+    return tok, custo, turnos
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--projeto", default="-home-math3us-forge-claude")
+    ap.add_argument("--desde", help="ISO date/timestamp; só turnos a partir dele")
+    ap.add_argument("--json", action="store_true", dest="como_json")
+    args = ap.parse_args()
+
+    base = os.path.expanduser(f"~/.claude/projects/{args.projeto}")
+    if not os.path.isdir(base):
+        print(f"não achei {base}", file=sys.stderr)
+        return 1
+
+    orq_tok, orq_custo, orq_turnos = collections.Counter(), 0.0, 0
+    for f in glob.glob(os.path.join(base, "*.jsonl")):
+        t, c, n = varre(f, args.desde)
+        orq_tok += t
+        orq_custo += c
+        orq_turnos += n
+
+    por_tipo = collections.defaultdict(lambda: {"custo": 0.0, "invoc": 0, "turnos": 0})
+    invocacoes = []
+    sub_tok, sub_custo, sub_turnos = collections.Counter(), 0.0, 0
+    for f in glob.glob(os.path.join(base, "*", "subagents", "*.jsonl")):
+        t, c, n = varre(f, args.desde)
+        if not n:
+            continue
+        tipo = "?"
+        meta = f[:-6] + ".meta.json"
+        if os.path.exists(meta):
+            try:
+                tipo = json.load(open(meta)).get("agentType", "?")
+            except ValueError:
+                pass
+        e = por_tipo[tipo]
+        e["custo"] += c
+        e["invoc"] += 1
+        e["turnos"] += n
+        invocacoes.append((tipo, n, c))
+        sub_tok += t
+        sub_custo += c
+        sub_turnos += n
+
+    total = orq_custo + sub_custo
+    if args.como_json:
+        print(json.dumps({
+            "orquestrador": {"custo_usd": round(orq_custo, 2), "turnos": orq_turnos, "tokens": dict(orq_tok)},
+            "subagentes": {"custo_usd": round(sub_custo, 2), "turnos": sub_turnos, "tokens": dict(sub_tok),
+                           "invocacoes": len(invocacoes)},
+            "por_tipo": {k: {"custo_usd": round(v["custo"], 2), **{x: v[x] for x in ("invoc", "turnos")}}
+                         for k, v in por_tipo.items()},
+            "total_usd": round(total, 2),
+        }, indent=2, ensure_ascii=False))
+        return 0
+
+    escopo = f" (desde {args.desde})" if args.desde else ""
+    print(f"=== Forge — consumo medido{escopo} ===\n")
+    print(f"{'':16}{'custo':>12}{'%':>7}{'turnos':>9}{'cache_read':>15}{'cache_write':>14}")
+    for nome, custo, turnos, tk in (("orquestrador", orq_custo, orq_turnos, orq_tok),
+                                    ("subagentes", sub_custo, sub_turnos, sub_tok)):
+        pct = custo / total * 100 if total else 0
+        print(f"{nome:16}{'US$ '+format(custo,',.2f'):>12}{pct:>6.0f}%{turnos:>9,}"
+              f"{tk['cache_read']:>15,}{tk['cache_write']:>14,}")
+    print(f"{'TOTAL':16}{'US$ '+format(total,',.2f'):>12}")
+
+    if por_tipo:
+        print(f"\n--- por tipo de subagente ---")
+        print(f"{'tipo':26}{'custo':>11}{'invoc':>7}{'por invoc':>11}{'turnos/inv':>12}")
+        for tipo, v in sorted(por_tipo.items(), key=lambda x: -x[1]["custo"]):
+            print(f"{tipo:26}{'US$ '+format(v['custo'],',.2f'):>11}{v['invoc']:>7}"
+                  f"{'US$ '+format(v['custo']/v['invoc'],',.2f'):>11}{v['turnos']/v['invoc']:>12.1f}")
+
+    if invocacoes:
+        print(f"\n--- a alavanca: custo por faixa de turnos ---")
+        print(f"{'turnos':14}{'n':>5}{'custo/invocação':>18}{'custo/turno':>14}")
+        for lo, hi in FAIXAS:
+            g = [x for x in invocacoes if lo <= x[1] <= hi]
+            if not g:
+                continue
+            rot = f"{lo}-{hi}" if hi < 10**9 else f"{lo}+"
+            c = sum(x[2] for x in g)
+            t = sum(x[1] for x in g)
+            print(f"{rot:14}{len(g):>5}{'US$ '+format(c/len(g),',.2f'):>18}{'US$ '+format(c/t,',.4f'):>14}")
+        turnos_dev = sorted(n for tipo, n, _ in invocacoes if tipo == "dev")
+        if turnos_dev:
+            med = statistics.median(turnos_dev)
+            p90 = turnos_dev[min(int(len(turnos_dev) * 0.9), len(turnos_dev) - 1)]
+            print(f"\nturnos por invocação do `dev`: mediana {med:.0f}, p90 {p90}, máx {turnos_dev[-1]}")
+            print("(o teto do hook mira ~45 turnos ≈ 26 chamadas de ferramenta)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

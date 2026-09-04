@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# PreToolUse (Write|Edit|MultiEdit): impõe o invariante "o Forge/orquestrador não escreve
+# PreToolUse (Write|Edit): impõe o invariante "o Forge/orquestrador não escreve
 # código de produto". Subagentes (dev/tester) escrevem livremente.
 #
-# Distinção verificada empiricamente na CLI 2.1.222: o payload do PreToolUse inclui
+# Distinção verificada empiricamente na CLI 2.1.222, reconfirmada na 2.1.260: o payload
+# do PreToolUse inclui
 # "agent_type"/"agent_id" QUANDO a chamada vem de um subagente; na sessão-raiz esses campos
 # não existem. Logo: sem agent_type => é o orquestrador => aplicar a allowlist de caminhos.
 #

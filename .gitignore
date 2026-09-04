@@ -26,3 +26,6 @@ projects/*
 .DS_Store
 .idea/
 .vscode/
+
+# estado transitório dos hooks (contadores de turno por subagente)
+.claude/state/

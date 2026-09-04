@@ -83,21 +83,37 @@ estruturado. Reprovou? O erro volta para o `dev` como briefing de correção, co
 tentativas.
 
 As imagens ficam **dentro do contexto do tester**, que é descartado ao fim da invocação — o
-orquestrador recebe a falha descrita em texto, nunca a imagem. Isso mantém a validação visual
-sem pagar por ela em todo turno seguinte (ver "Barato por construção" abaixo).
+orquestrador recebe a falha descrita em texto, nunca a imagem. A validação visual sai de graça
+no turno seguinte, e o teto de 5 prints existe para manter o foco no que a tarefa mudou, não
+para economizar: medindo os transcripts, imagem deu ~1% do consumo.
 
-### 💰 Barato por construção
+### 💰 Barato por medição, não por palpite
 
-Economia de token aqui é decisão de arquitetura, não uma ferramenta instalada por cima:
+As 35 sessões deste repo foram medidas token a token (`~/.claude/projects/*/subagents/*.jsonl`):
+2,65 bilhões de tokens processados, **55% deles nos subagentes**, e dentro dos subagentes
+**55% do custo é contexto reenviado** (`cache_read`). O que a medição mostrou:
 
-- **Imagem não entra no contexto principal.** É o item mais caro de um loop agentic; fica
-  isolada no subagente que a analisou. Teto de 3 prints por tarefa, sem `fullPage`.
+- **Turno é o que custa, não imagem.** O custo de uma invocação foi de **US$ 0,04** (até 10
+  turnos) a **US$ 14,64** (121+ turnos) — 366×. O contexto do subagente cresce e é reenviado
+  inteiro a cada turno, então o custo *por turno* também sobe (5,4× entre as duas faixas).
+  Imagem, o suspeito óbvio, deu **~1%**.
+- **Teto de turnos imposto por hook.** ~26 chamadas de ferramenta por `dev` (≈45 turnos). No
+  limite ele devolve `status: PARCIAL` com `feito`/`falta`/`proximo_briefing`, e o
+  orquestrador re-loteia — trabalho parcial bem descrito, não retrabalho. Esse único corte
+  responde por ~76% da conta de subagentes.
+- **Sonnet por padrão, opus sob demanda.** Medido, `dev` em opus custou 2,8× por invocação.
+  O orquestrador promove só em arquitetura ou destravamento de Loop Travado.
+- **Bash foi 61% do que os subagentes ingeriram.** Os briefings mandam usar `Grep`/`Glob`/
+  `Read` (com `limit`) em vez de `grep`/`find`/`cat`, filtrar na fonte e nunca reler o que já
+  está no contexto.
 - **Skills sob demanda.** O orquestrador nomeia 1–2 skills por briefing; nada de carregar 11
   "por precaução". No boot, cada skill custa só a sua linha de descrição.
 - **Arquivos de controle com teto.** `progress.md` mantém os ciclos recentes; o resto vai
   para o histórico, que não é lido no loop.
-- **Output filtrado na fonte** — `--oneline -20`, `| tail`, `--json --jq` — em vez de despejar
-  no contexto e pagar de novo a cada turno.
+
+E o que a medição **descartou**: paralelismo não custa caro aqui. A tese de que o fan-out paga
+`cache_write` a preço de cache frio não se sustentou nos dados — 3.448 tokens de `cache_write`
+por turno em invocações solo contra 3.349 em lote. O Invariante 5 fica de pé.
 
 ### 🧭 Estado em disco, não na memória
 
@@ -111,7 +127,7 @@ histórico da conversa.
 | Papel | Quem é | Do que é dono |
 |---|---|---|
 | 🔥 **Forge** | a sessão principal | requisitos, spec, decomposição, briefings, revisão, relatório |
-| 🛠️ **dev** | subagente (`opus`) | **todo** o código de produto |
+| 🛠️ **dev** | subagente (`sonnet`, opus sob demanda) | **todo** o código de produto |
 | 🔍 **tester** | subagente (`sonnet`) | build, E2E, screenshots, veredito |
 
 Cada subagente devolve **JSON estruturado** — o orquestrador decide olhando dados, nunca
@@ -167,7 +183,7 @@ Seis invariantes valem em qualquer momento da sessão, sempre no contexto (`CLAU
 | 3 | Mensagens de commit em **português** |
 | 4 | Confirma antes de matar processo; pesquisa antes de usar tecnologia nova |
 | 5 | **Paralelize por padrão** — o usuário não precisa pedir para adiantar trabalho |
-| 6 | **Cada token reenviado é pago de novo** — imagem fora do contexto principal, output filtrado na fonte |
+| 6 | **Cada token reenviado é pago de novo** — teto de turnos por subagente, sonnet por padrão, output filtrado na fonte |
 
 ## Skills incluídas
 
@@ -182,19 +198,50 @@ Carregadas sob demanda, não de uma vez:
 
 ```
 forge-claude/
-├── CLAUDE.md                  # os 5 invariantes — sempre no contexto
+├── CLAUDE.md                  # os 6 invariantes — sempre no contexto
 ├── bin/forge                  # entrypoint
+├── bin/forge-tokens           # medidor de consumo (lê os transcripts)
 ├── .claude/
 │   ├── settings.json          # permissões + hook de imposição de papel
 │   ├── agents/{dev,tester}.md
 │   ├── commands/{forge,forge-new,forge-fix}.md
-│   ├── hooks/deny-orchestrator-code-edits.sh
+│   ├── hooks/
+│   │   ├── deny-orchestrator-code-edits.sh   # quem orquestra não codifica
+│   │   └── subagent-turn-budget.sh           # teto de turnos por subagente
 │   └── skills/                # 23 skills carregadas sob demanda
 ├── templates/                 # prompt.template.md, .npmrc
 └── projects/<nome>/           # projetos gerados (não versionados aqui)
     ├── prompt.md              # a spec
     └── .forge/                # tasks.md · progress.md · progress-historico.md · screenshots/
 ```
+
+## Medindo o próprio custo
+
+O Forge traz a régua junto:
+
+```bash
+bin/forge-tokens                     # onde o token foi gasto, em todas as sessões
+bin/forge-tokens --desde 2026-09-04  # só depois de uma data — para comparar antes/depois
+bin/forge-tokens --json              # para script
+```
+
+Ele lê os transcripts (`~/.claude/projects/*/subagents/*.jsonl`) e reporta orquestrador vs
+subagentes, custo por tipo de subagente e a curva de custo por faixa de turnos. Todo número
+deste README saiu dele — e você pode refazer a conta a qualquer momento em vez de confiar na
+promessa de quem vende a otimização.
+
+## Ajustando o orçamento de turnos
+
+O teto vem calibrado pelos dados deste repo (razão medida: 1,73 turno por chamada de
+ferramenta). Para afrouxar ou apertar, sem editar o hook:
+
+```bash
+FORGE_TURN_WARN=18  FORGE_TURN_CAP=26   # dev (padrão) — ≈31 e ≈45 turnos
+FORGE_TESTER_WARN=30 FORGE_TESTER_CAP=45 # tester (padrão) — ele sobe servidor e roda E2E
+```
+
+Tetos mais folgados, com a economia estimada sobre os mesmos dados: 40 turnos → ~76% da conta
+de subagentes; 60 → ~58%; 80 → ~42%.
 
 ## Roadmap
 
