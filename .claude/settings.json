@@ -28,7 +28,6 @@
       "Bash(find:*)",
       "Bash(rtk git status:*)",
       "Bash(rtk git diff:*)",
-      "Bash(rtk git log:*)",
       "Bash(rtk git show:*)",
       "Bash(rtk git branch:*)",
       "Bash(rtk find:*)",
@@ -37,7 +36,13 @@
       "Bash(rtk jest:*)",
       "Bash(rtk vitest:*)",
       "Bash(rtk pytest:*)",
-      "Bash(rtk playwright:*)"
+      "Bash(rtk playwright:*)",
+      "Bash(rtk tsc:*)",
+      "Bash(rtk ruff:*)",
+      "Bash(rtk eslint:*)",
+      "Bash(rtk lint:*)",
+      "Bash(uv run rtk:*)",
+      "Bash(pnpm exec rtk:*)"
     ],
     "ask": [
       "Bash(git push:*)",

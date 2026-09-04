@@ -153,7 +153,11 @@ print((d.get("hook_event_name") or "") + " " + (d.get("tool_name") or ""))
 
 # Somente comandos de LEITURA com ganho medido e variante `rtk` liberada no settings.
 # Nada que envolva push, deploy, escrita ou instalação de dependência entra aqui.
-RTK_OK='^(git[[:space:]]+(status|diff|log|show|branch)|find|ls|tree|jest|vitest|pytest|npx[[:space:]]+(jest|vitest|playwright)|pnpm[[:space:]]+exec[[:space:]]+(jest|vitest|playwright))([[:space:]]|$)'
+# Leitura/inspeção com ganho medido, e verificação (testes, tipos, lint) com ganho
+# documentado de 83-99%. Testes entram porque o `dev` roda muito deles (234 chamadas de
+# playwright, 229 de tsc, 85 de pytest nos transcripts) — hoje o output já é pequeno porque
+# o Forge filtra na fonte, mas se o ciclo de teste crescer o filtro já está no lugar.
+RTK_OK='^((uv[[:space:]]+run[[:space:]]+|pnpm[[:space:]]+exec[[:space:]]+|npx[[:space:]]+|python3?[[:space:]]+-m[[:space:]]+)?(jest|vitest|pytest|playwright|tsc|ruff|eslint)|git[[:space:]]+(status|diff|show|branch)|find|ls|tree)([[:space:]]|$)'
 
 if [ "$event" = "PreToolUse Bash" ] && [ -x "$RTK_BIN" ]; then
     cmd=$(FORGE_HOOK_PAYLOAD="$payload" python3 -c '

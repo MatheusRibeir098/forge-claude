@@ -232,9 +232,11 @@ tar -xzf rtk-x86_64-unknown-linux-musl.tar.gz
 install -m 755 rtk ~/.local/bin/rtk                     # ou aponte FORGE_RTK_BIN
 ```
 
-**A delegação é restrita a uma lista fechada** (`RTK_OK` no hook): `git status|diff|log|show|
-branch`, `find`, `ls`, `tree` e test runners. Só leitura, só onde o ganho foi medido, e cada
-variante `rtk ...` está liberada na allowlist do `settings.json`.
+**A delegação é restrita a uma lista fechada** (`RTK_OK` no hook): `git status|diff|show|
+branch`, `find`, `ls`, `tree`, e os verificadores — `playwright`, `pytest`, `vitest`, `jest`,
+`tsc`, `ruff`, `eslint`, inclusive nas formas que o Forge usa de fato (`pnpm exec …`,
+`npx …`, `uv run …`, `python3 -m …`). Só leitura e verificação, e cada variante `rtk ...` está
+liberada na allowlist do `settings.json`.
 
 O motivo da restrição é de segurança, não de gosto: a reescrita acontece **antes** da checagem
 de permissão, então ela troca o comando que as regras de `permissions` vão avaliar. Com o rtk
@@ -242,11 +244,18 @@ reescrevendo livremente, `git push` virava `rtk git push` e **deixava de casar c
 `Bash(git push:*)`** — furando a imposição do Invariante 2 — e `cat`/`ls`/`find` saíam da
 allowlist, o que geraria prompt de permissão em cada comando do loop.
 
-Quanto isso rende: **~4,5% do volume de Bash** no perfil deste repo (`git status` 76%, `tree`
-98%, `find` 51%, build 17%; `cat`, `sed`, `grep` e `git log` deram **0%**). Os "60–90%"
-anunciados não se reproduzem aqui, porque quem domina o Bash do Forge é justamente `cat`/`sed`/
-`grep`. O ganho de verdade veio das regras de briefing — usar `Grep`/`Glob`/`Read` no lugar
-deles —, não do proxy.
+Quanto isso rende, medido rodando o hook do rtk sobre **os 7.127 comandos Bash reais** dos
+transcripts: ele *toca* 55,5% do volume, mas a economia é **5,4% do Bash ≈ 3,3% do que os
+subagentes ingerem ≈ US$ 40**. A razão de a cobertura alta render pouco: o volume que ele toca
+é dominado por `rtk read` (1,7 mi chars) e `rtk grep` (0,8 mi), que no nível padrão devolvem
+saída **idêntica** — o nível que comprime de verdade (`aggressive`) troca corpos de função por
+`// ... implementation`, inútil para quem vai editar o arquivo.
+
+E os "60–99%" que ele anuncia em test runner são reais — só não têm onde incidir aqui. O `dev`
+roda muito teste (234 chamadas de playwright, 229 de tsc, 85 de pytest), mas o output médio já
+é de ~600 a 1.400 chars, porque o Invariante 6 **já manda filtrar na fonte** (`| tail -30`).
+O RTK chega para colher um ganho que o próprio design do Forge já colheu. Ele continua na
+lista porque é risco zero e porque, se o ciclo de teste crescer, o filtro já está no lugar.
 
 ## Medindo o próprio custo
 
