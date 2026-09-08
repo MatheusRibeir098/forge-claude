@@ -231,18 +231,11 @@ print((d.get("hook_event_name") or "") + " " + (d.get("tool_name") or ""))
 # documentado de 83-99%. Testes entram porque o `dev` roda muito deles (234 chamadas de
 # playwright, 229 de tsc, 85 de pytest nos transcripts) — hoje o output já é pequeno porque
 # o Forge filtra na fonte, mas se o ciclo de teste crescer o filtro já está no lugar.
-RTK_OK='^((uv[[:space:]]+run[[:space:]]+|pnpm[[:space:]]+exec[[:space:]]+|npx[[:space:]]+|python3?[[:space:]]+-m[[:space:]]+)?(jest|vitest|pytest|playwright|tsc|ruff|eslint)|git[[:space:]]+(status|diff|show|branch)|find|ls|tree)([[:space:]]|$)'
-
-if [ "$event" = "PreToolUse Bash" ] && [ -x "$RTK_BIN" ]; then
-    cmd=$(FORGE_HOOK_PAYLOAD="$payload" python3 -c '
-import json, os
-try: d = json.loads(os.environ["FORGE_HOOK_PAYLOAD"])
-except Exception: raise SystemExit
-print(((d.get("tool_input") or {}).get("command") or "").strip())
-')
-    if printf '%s' "$cmd" | grep -Eq "$RTK_OK"; then
-        printf '%s' "$payload" | "$RTK_BIN" hook claude 2>/dev/null || true
-    fi
+# A allowlist (RTK_OK) vive em lib/rtk-bash-delegate.sh, compartilhada com o hook da
+# sessão-raiz (rtk-root.sh) — não duplique a regex aqui.
+if [ "$event" = "PreToolUse Bash" ]; then
+    source "$(dirname "${BASH_SOURCE[0]}")/lib/rtk-bash-delegate.sh"
+    rtk_delegate_if_allowed "$payload" "$RTK_BIN"
 fi
 
 exit 0
