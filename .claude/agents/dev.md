@@ -42,7 +42,7 @@ Ou seja: **insistir é caro e fica pior a cada turno.** Trabalhe assim:
 
 ## 🚫 O que NÃO é seu: validação pesada
 
-Você **não** sobe servidor, não roda Playwright/browser, não tira screenshot e não bate na
+Você **não** sobe servidor, não roda browser, não tira screenshot e não bate na
 aplicação por HTTP. Um hook bloqueia essas quatro coisas para você — não é desconfiança, é
 divisão de papel medida:
 

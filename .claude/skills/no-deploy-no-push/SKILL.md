@@ -33,8 +33,8 @@ Quando o usuário pedir para **"subir para o GitHub"** ou **"criar repositório"
 
 ### Sempre ignorar (adicionar ao .gitignore antes do primeiro commit):
 - `.claude/` — configurações internas do Forge/Claude Code (skills, settings)
-- `e2e/` e `playwright.config.ts` — testes locais de desenvolvimento
-- `.forge/` — screenshots e artefatos internos do forge (`projects/<nome-do-projeto>/.forge/`)
+- `e2e/` e artefatos de validação do `claude-in-chrome` — testes locais de desenvolvimento
+- `.forge/` — evidências e artefatos internos do forge (`projects/<nome-do-projeto>/.forge/`)
 - `prompt.md` — spec/prompt interno do forge
 - `orchestration/` — logs e sinais do forge-loop
 - `*.log`, `run.sh`, `setup.sh`, `clean-logs.sh` — scripts de orquestração local

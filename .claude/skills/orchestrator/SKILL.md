@@ -21,17 +21,13 @@ Você (Forge / orquestrador)
   └─ avalia → marca done / re-briefa → registra em .forge/progress.md
 ```
 
-O "fim" de cada etapa é o **retorno da Task tool**, determinístico. Você nunca infere
-conclusão observando um terminal.
-
-O diagrama acima é o caminho de **uma** tarefa. Na prática você roda vários desses caminhos
-ao mesmo tempo — ver "Paralelismo" logo abaixo.
+O "fim" de cada etapa é o **retorno da Task tool**, determinístico — nunca infira observando
+terminal. Este é o caminho de **uma** tarefa; vários rodam juntos, ver "Paralelismo".
 
 ## Paralelismo — o padrão, não a exceção
 
 **Mecânica:** subagentes só rodam em paralelo se as chamadas da Task tool estiverem **na
-mesma mensagem**. Uma chamada por mensagem = fila sequencial, mesmo que os trabalhos sejam
-independentes. Então junte-as num bloco só.
+mesma mensagem**. Uma por mensagem = fila sequencial, mesmo com trabalhos independentes.
 
 ### Checkpoint de paralelismo (rode antes de cada invocação)
 
@@ -43,7 +39,7 @@ alguma der "sim", inclua o trabalho na mesma mensagem:
 2. **Pesquisa adiantada** — a próxima tarefa depende de API/lib/formato que ainda não
    conhecemos? → um `scout` pesquisando enquanto o `dev` codifica.
 3. **Validação em pipeline** — a tarefa anterior já entregou? → o `tester` dela roda junto
-   com o `dev` da atual.
+   com o `dev` da atual (exceto `tester` em modo `browser`, que é serial — ver tabela).
 4. **Segunda opinião** — a entrega é arriscada, tem alegação de "funciona" não verificada, ou
    toca segurança/credencial/dinheiro? → um agente de verificação independente em paralelo
    (foi o que a tarefa A11-V do bot-ofertas pegou).
@@ -57,7 +53,7 @@ serial **por dependência**, não por esquecimento.
 |---|---|
 | Tarefas que tocam **arquivos disjuntos** | Dois `dev` no **mesmo arquivo** — o segundo sobrescreve o primeiro |
 | Qualquer número de `scout` (pesquisa, mapeamento, revisão) — só-leitura, nunca colidem | Tarefas que negociam o **mesmo contrato** (schema, tipo compartilhado, assinatura de API) antes de ele existir |
-| `tester` da tarefa N ⟂ `dev` da tarefa N+1 | Tarefa que depende do **retorno** da anterior (`tasks.md` diz "depende de") |
+| `tester` em modo **`contrato`** da tarefa N ⟂ `dev` da N+1 | Tarefa que depende do **retorno** da anterior (`tasks.md` diz "depende de"); e **dois `tester` em modo `browser` ao mesmo tempo** — é o Chrome real do usuário, uma janela só |
 | Fontes/módulos independentes (ex.: um `dev` por integração) | Correção de bug + refatoração **no mesmo módulo** |
 | Verificação independente ⟂ implementação | Qualquer coisa que rode `pnpm install` / mexa em `package.json` ao mesmo tempo |
 
@@ -66,21 +62,18 @@ serial **por dependência**, não por esquecimento.
 1. Liste os arquivos que cada tarefa do lote vai escrever.
 2. Cruze as listas. **Interseção vazia → paralelo. Interseção não-vazia → serial**, ou
    reparta as tarefas até zerar a interseção.
-3. Escreva no briefing de cada `dev`: *"você é o único dono de `<arquivos>`; não edite nada
-   fora dessa lista — outro agente está trabalhando em paralelo."*
+3. Escreva no briefing de cada `dev` o aviso de concorrência (modelo na seção do briefing).
 4. Contrato compartilhado (tipo, schema, interface) → uma tarefa **só dele**, serial, antes
    do fan-out. Depois os consumidores vão todos em paralelo.
 
-**Teto prático: 3–4 `dev` simultâneos.** Acima disso a revisão dos retornos vira o gargalo e
-os conflitos aparecem. Lição registrada no `progress.md` do bot-ofertas: cinco agentes de uma
-vez no mesmo módulo produziram retrabalho — o problema não foi o paralelismo, foi paralelizar
-trabalho acoplado.
+**Teto prático: 3–4 `dev` simultâneos.** Acima disso a revisão vira gargalo e os conflitos
+aparecem. No `progress.md` do bot-ofertas, cinco agentes no mesmo módulo produziram
+retrabalho — o problema não foi paralelizar, foi paralelizar trabalho acoplado.
 
 ### Ao reportar
 
-Diga o que está rodando junto e por quê: *"disparei 3 devs em paralelo (A, B, C — arquivos
-disjuntos) + 1 pesquisando a API do X para a tarefa D."* Se algo ficou serial, diga a
-dependência que obrigou.
+Diga o que roda junto e por quê: *"3 devs em paralelo (A, B, C — arquivos disjuntos) + 1
+pesquisando a API do X para a D."* Se algo ficou serial, diga a dependência que obrigou.
 
 ## Arquivos de controle (fonte de verdade)
 
@@ -99,15 +92,15 @@ Ficam em `projects/<nome>/.forge/`:
   **Tem teto** — ver "Rotação do progress.md" abaixo.
 - **`progress-historico.md`** — ciclos antigos, arquivados. **Não é lido no loop**; só sob
   pedido explícito do usuário ou quando você precisa investigar um problema recorrente.
-- **`screenshots/`** — onde o `tester` salva as prints. Ele as analisa e descreve; **você não
-  as abre** — não porque a imagem seja caríssima (medido: ~1% do loop), mas porque a análise
-  visual é dele e o seu contexto é reenviado em todo turno da sessão. Os caminhos ficam para
-  o usuário.
+- **`evidencias/`** — onde o `tester` em modo `browser` salva as capturas. Ele as analisa e
+  descreve; **você não as abre** — não porque a imagem seja cara (medido: ~1% do loop), mas
+  porque a análise é dele e o seu contexto é reenviado em todo turno. Os caminhos ficam para
+  o usuário. Modo `contrato` não escreve nada aqui.
 
 ### Rotação do `progress.md`
 
-O arquivo é lido a cada retomada de sessão, então crescimento sem limite vira custo fixo
-crescente — um projeto de médio porte chega a milhares de tokens só nele.
+Ele é lido a cada retomada de sessão: crescer sem limite vira custo fixo — um projeto de
+médio porte chega a milhares de tokens só nele.
 
 - Mantenha **o cabeçalho de estado + os ~10 ciclos mais recentes**.
 - Passou disso: mova os mais antigos para `progress-historico.md` (append no fim) e deixe uma
@@ -132,16 +125,15 @@ fluxo fix):
    - listando os arquivos que serão criados/alterados;
    - dependendo só de tarefas anteriores.
 
-   **Teste de atomicidade:** se você não consegue nomear os arquivos e o contrato em três
-   linhas, a tarefa não é atômica — quebre mais. O sinal de que errou aparece depois no
-   retorno: nos dados deste repo houve invocações com **38 `Edit` no mesmo arquivo**, o que
-   nunca é "trabalho difícil", é sempre tarefa grande demais entregue como uma só.
+   **Teste de atomicidade:** se você não nomeia os arquivos e o contrato em três linhas, a
+   tarefa não é atômica — quebre mais. O sinal de que errou vem no retorno: houve invocações
+   com **38 `Edit` no mesmo arquivo**, o que nunca é "difícil", é tarefa grande demais.
 3. **Agrupe em lotes paralelos**: percorra as tarefas e marque quais podem sair juntas —
    dependências satisfeitas e listas de arquivos disjuntas. Anote o lote na própria tarefa
    (`— lote: L2`). O backlog já nasce paralelizável em vez de você redescobrir isso a cada
    ciclo.
-4. Grave em `.forge/tasks.md`. Apresente o plano ao usuário antes de começar a executar,
-   dizendo **quantos lotes** e o que roda junto em cada um.
+4. Grave em `.forge/tasks.md` e apresente o plano ao usuário antes de executar, dizendo
+   **quantos lotes** e o que roda junto em cada um.
 
 ```markdown
 - [ ] T3 — Rota /ofertas       — depende de: T1 — lote: L2 — arquivos: backend/src/routes/ofertas.ts
@@ -149,11 +141,9 @@ fluxo fix):
 - [ ] T5 — Integra front↔back  — depende de: T3,T4 — lote: L3 — arquivos: frontend/src/lib/api.ts
 ```
 
-Ordem típica para projeto novo: Setup → Banco/schema → Backend (rotas/services) → Frontend
-(páginas/componentes) → Integração front↔back → Polish (responsivo, dark mode, animações).
-Dentro de cada faixa dessas, as peças costumam ser irmãs independentes — é aí que mora o
-paralelismo fácil (uma rota por `dev`, uma página por `dev`). Entre faixas, há dependência
-real: serialize.
+Ordem típica: Setup → Banco/schema → Backend → Frontend → Integração front↔back → Polish.
+Dentro de cada faixa as peças costumam ser irmãs independentes — paralelismo fácil. Entre
+faixas há dependência real: serialize.
 
 ## Briefing para o `dev` (qualidade importa)
 
@@ -180,8 +170,7 @@ Um bom briefing é **auto-contido** — o subagente não tem o histórico da sua
   arquitetura, contrato compartilhado difícil ou destravamento de Loop Travado, diga no
   briefing que é para rodar em opus (opus custou 2,8× por invocação nos dados medidos).
 
-Invoque o subagente `dev` passando esse briefing — **um por tarefa do lote, todos na mesma
-mensagem**. Cada um retorna:
+Invoque o `dev` com o briefing — um por tarefa do lote, todos na mesma mensagem. Retorna:
 ```json
 { "status": "OK|PARCIAL|BLOQUEADO", "arquivos_alterados": [...], "build_ok": true,
   "comandos_para_subir": [...], "resumo": "...",
@@ -223,7 +212,7 @@ acabaram validando a si mesmos. Duas consequências, as duas ruins:
 sem ela o orquestrador improvisa o ciclo, e o `tester` é o primeiro passo a cair. Por isso a
 regra agora não depende de você ter lido nada:
 
-- um hook **bloqueia** o `dev` de subir a aplicação, rodar browser/E2E, tirar screenshot e
+- um hook **bloqueia** o `dev` de subir a aplicação, rodar browser/E2E, capturar evidência e
   bater na app por HTTP (ele mantém `tsc`/`build`/lint/teste unitário e qualquer script
   próprio, inclusive em background — é o `build_ok` que ele reporta);
 - outro hook **injeta um lembrete** quando você despacha um `dev` cuja tarefa envolve UI ou
@@ -237,30 +226,38 @@ não invocar, ninguém validou. Use os `comandos_para_subir` que o `dev` devolve
 Tarefa sem nada observável (refactor puro, tipo, script interno) segue sem `tester` — a prova
 ali é o `build_ok` e a leitura do diff.
 
-## Briefing para o `tester` (curto e focado)
+## Briefing para o `tester` (um briefing por modo)
 
-O `tester` valida **apenas** o que a tarefa implementou (não a suite inteira). Passe:
+O `tester` valida **apenas** o que a tarefa implementou. O hook já injetou o modo,
+`arquivos_alterados` e `comandos_para_subir` — não releia nada, só monte o briefing certo:
 
-- **Como subir** o app (use `comandos_para_subir` que o `dev` retornou).
-- **O que validar**: rotas/páginas/estados específicos desta tarefa.
-- **Screenshots**: nomeie **quais** capturar, com teto explícito (*"no máximo 2: a lista com
-  dados em desktop e o estado de erro"*). Tarefa sem UI → *"nenhuma print; valide por
-  resposta da API"*. O teto máximo dele é 5. Print custa ~1% do loop, então o teto serve para
-  manter o `tester` focado no que a tarefa mudou — **não** para economizar: aprovar errado e
-  devolver a tarefa ao `dev` custa muito mais que uma imagem.
+- **Modo `browser`**: como subir (os `comandos_para_subir` do hook), quais telas/estados
+  validar, e quais evidências capturar com teto **explícito** (*"no máximo 2: a lista com
+  dados em desktop e o estado de erro"*; teto duro do `tester` é 5). Print custa ~1% do loop —
+  o teto é foco, não economia.
+- **Modo `contrato`**: **quais tools do MCP chamar e com que payload** (real, não simulado),
+  quais comandos read-only rodar (`aws describe/list`, suíte completa), e **qual critério de
+  aceite do `tasks.md`** conferir — contra o aceite, não contra a intenção declarada pelo
+  `dev`. Zero prints: aqui imagem não prova nada.
 - **Skills a consultar**: 1–2, como no briefing do `dev`.
 
 Ele retorna:
 ```json
-{ "veredito": "PASSOU|FALHOU", "falhas": [{ "tipo": "...", "tela": "...", "descricao": "..." }],
-  "screenshots": ["/caminho/abs/..."], "logs_relevantes": [...], "recomendacao_para_dev": "..." }
+{
+  "modo": "browser | contrato",
+  "veredito": "PASSOU | FALHOU",
+  "falhas": [{"tipo":"build|e2e|visual|api|contrato|ambiente","onde":"...","viewport":"desktop|mobile|n/a","descricao":"..."}],
+  "evidencias": ["..."],
+  "logs_relevantes": ["..."],
+  "recomendacao_para_dev": "..."
+}
 ```
 
 ## Avaliar e fechar o ciclo
 
 - **PASSOU** → marque a tarefa `[x]` em `.forge/tasks.md`, registre o ciclo em
-  `.forge/progress.md` (retorno do dev + veredito + **descrição** das falhas visuais, se
-  houve; não os caminhos das imagens) e vá para a próxima tarefa. Registre em 2–4 linhas —
+  `.forge/progress.md` (retorno do dev + veredito + **descrição** das falhas, se
+  houve; não as evidências) e vá para a próxima tarefa. Registre em 2–4 linhas —
   `progress.md` é lido em toda retomada, então prolixidade ali é custo recorrente.
 - **FALHOU** → monte um briefing de correção a partir de `falhas` + `recomendacao_para_dev`
   e volte a invocar o `dev`. Incremente a contagem de tentativas da tarefa em `progress.md`.
@@ -286,8 +283,8 @@ Nunca fique em loop infinito re-briefando a mesma coisa.
 
 ## Servidores de longa duração
 
-Quando o `tester` precisar subir backend/frontend, ele usa `Bash` com `run_in_background: true`
-e lê o output depois. Não existe mais a sessão tmux `servers`; não há foreground travando nada.
+No modo `browser`, o `tester` sobe backend/frontend com `Bash` (`run_in_background: true`) e
+lê o output depois — sem tmux, sem foreground travando.
 
 ## Regras de ouro
 
@@ -295,9 +292,8 @@ e lê o output depois. Não existe mais a sessão tmux `servers`; não há foreg
 - Você **não escreve código de produto** — sempre delega ao `dev`.
 - Reporte ao usuário de forma resumida: o que foi feito, o que está em andamento, o que falta.
 - Se o usuário mudar de ideia no meio, adapte o `tasks.md`.
-- **Nunca deixe um subagente ocioso enquanto há trabalho independente na fila.** Se o usuário
-  perguntar "tem algo a mais que outro subagente possa adiantar?", a resposta já deveria ser
-  "sim, e já está rodando" — a pergunta é sinal de que você esqueceu o checkpoint.
+- **Nunca deixe um subagente ocioso com trabalho independente na fila.** Se o usuário perguntar
+  "tem algo a mais que possa adiantar?", a resposta já deveria ser "sim, e já está rodando".
 
 ## Custo — o que sai caro neste loop (medido, não estimado)
 
@@ -305,9 +301,8 @@ Os 35 transcripts deste repo (ago–set/2026) foram medidos: 2,65 bilhões de to
 processados, dos quais **55% são os subagentes**. Dentro dos subagentes, **55% do custo é
 `cache_read`** — contexto reenviado turno a turno.
 
-O ponto contraintuitivo: é verdade que cada `dev` **começa** com contexto limpo, mas ele não
-**permanece** limpo. O custo não desaparece no fan-out — ele migra para dentro do subagente,
-onde cresce mais rápido porque ninguém o poda:
+Cada `dev` **começa** com contexto limpo, mas não **permanece** limpo: o custo não some no
+fan-out, migra para dentro do subagente, onde cresce mais rápido porque ninguém o poda:
 
 | turnos na invocação | n | custo médio/invocação | tokens processados/invocação |
 |---|---|---|---|
@@ -321,7 +316,7 @@ Da primeira faixa à última: **366× por invocação.** Confira você mesmo com
 
 O `dev` rodava com **mediana de 76 turnos** (p90 138, máximo 301). Por isso existe o teto por
 hook: ele responde por ~76% da conta de subagentes. **Sua decomposição é a alavanca de custo
-mais forte do Forge** — mais que modelo, mais que print, mais que qualquer ferramenta.
+mais forte do Forge** — mais que modelo ou evidência visual.
 
 | Fonte | Peso medido | Regra |
 |---|---|---|
@@ -330,13 +325,12 @@ mais forte do Forge** — mais que modelo, mais que print, mais que qualquer fer
 | **`Read` de arquivo inteiro** | 31% do ingerido; 74% das leituras sem `limit` | No briefing: nomeie os arquivos e mande usar `limit`/`offset`; proíba releitura |
 | **Modelo** | opus custou 2,8× sonnet por invocação | `sonnet` padrão; opus só em arquitetura/Loop Travado |
 | **Lote acoplado** | retrabalho é o pior desperdício | Arquivos disjuntos, teto de 3–4 |
-| **Screenshots** | **~1%** — não é o vilão | Teto de 5/tarefa; você lê só o JSON. Não corte validação para "economizar" |
+| **Evidências visuais** | **~1%** — não é o vilão | `tester` inteiro = 5% dos tokens de subagente. Teto de 5/tarefa; você lê só o JSON. Não corte validação para "economizar" |
 | **Varredura no seu próprio contexto** | o contexto principal chegou a 652 mil tokens/turno (média de 449 mil após o turno 300) | Delegue ao `scout`: o lixo da busca morre com ele |
 
 **Paralelismo NÃO está no custo.** Testei a hipótese do "subagent tax" (fan-out pagaria
 `cache_write` a preço de cache frio) nos dados deste repo: `cache_write` por turno foi 3.448
 em invocações solo e 3.349 em lote. Sem penalidade detectável. Mantenha o Invariante 5.
 
-Quando o usuário estiver ajustando custo da sessão: decompor tarefas e revisar JSON não
-precisa de effort alto — `/effort medium` serve. Guarde `high`/`xhigh` para quando você
-estiver de fato raciocinando sobre arquitetura ou destravando um Loop Travado.
+Ajustando custo da sessão: decompor tarefas e revisar JSON não precisa de effort alto —
+`/effort medium` serve. Guarde `high`/`xhigh` para arquitetura e Loop Travado.

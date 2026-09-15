@@ -56,8 +56,8 @@ description: Use ao decidir o escopo de testes de uma mudança — teste o que m
 ## Pirâmide de testes para projetos com deploy AWS
 
 ```
-        E2E contra produção (Playwright)
-       ─────────────────────────────────
+        E2E contra produção (claude-in-chrome)
+       ───────────────────────────────────────
       Integração real (token Cognito + AWS)
      ─────────────────────────────────────
     API local (Supertest, NODE_ENV=test)

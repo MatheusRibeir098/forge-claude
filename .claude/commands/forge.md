@@ -31,8 +31,8 @@ Escolha (1 ou 2):
    `spec-driven` (critérios Given/When/Then). **Mostre ao usuário e confirme** antes de seguir.
 3. **Preparar o projeto**:
    - Crie `projects/<nome>/` e a pasta de controle `projects/<nome>/.forge/`.
-   - Faça o scaffolding e instale as dependências (`pnpm create vite`, `pnpm add ...`,
-     `npx playwright install chromium`) — ver skills `scaffolding` e o subagente `dev`.
+   - Faça o scaffolding e instale as dependências (`pnpm create vite`, `pnpm add ...`) — ver
+     skills `scaffolding` e o subagente `dev`.
    - Copie `templates/.npmrc` para a raiz do projeto e pré-aprove builds nativos no
      package.json (`pnpm.onlyBuiltDependencies`).
    - `git init` + commit inicial (mensagem em PT-BR). Perfil git: ver skill `git-profiles`.
@@ -68,12 +68,13 @@ Escolha (1 ou 2):
   rodando em paralelo.
 - **Invariante 6 (custo):** o gasto dominante é **turno dentro de subagente**, então
   decomponha de verdade — tarefa que não cabe em ~35 chamadas de ferramenta volta `PARCIAL` e
-  você re-loteia (não re-briefa a tarefa inteira). Nos briefings: nomeie 1–2 skills, mande
-  usar `Grep`/`Glob`/`Read` em vez de `grep`/`find`/`cat`, dê ao `tester` um teto explícito de
-  prints (máx. 5; "nenhuma" quando a tarefa não tem UI) e nunca abra as imagens — o JSON dele
-  já traz a falha descrita. **Invocar o `tester` é obrigatório** em tarefa com UI/rota: o `dev`
-  está bloqueado por hook de subir servidor e rodar E2E, então sem `tester` a tarefa não foi
-  validada. O `dev` roda em `sonnet`; peça opus só em arquitetura ou Loop
-  Travado.
+  você re-loteia (não re-briefa a tarefa inteira). Nos briefings: nomeie 1–2 skills e mande
+  usar `Grep`/`Glob`/`Read` em vez de `grep`/`find`/`cat`. **Invocar o `tester` é obrigatório**
+  em tarefa com UI/rota/endpoint — o hook já decide o modo pelo retorno do `dev` e te avisa em
+  uma linha, sem perguntar: modo `browser` (mexeu em arquivo renderizável + o `dev` devolveu
+  `comandos_para_subir`) valida no Chrome real via `claude-in-chrome`, serial, teto de 5
+  evidências; modo `contrato` (MCP/CLI/API/YAML/schema/infra) chama as tools de verdade e
+  confere o critério de aceite do `tasks.md`, zero prints. Sem `tester`, a tarefa não foi
+  validada. O `dev` roda em `sonnet`; peça opus só em arquitetura ou Loop Travado.
 - Regra do Loop Travado (skill `orchestrator`): 3 falhas na mesma tarefa → reformule; se
   persistir → pare e pergunte ao usuário.
