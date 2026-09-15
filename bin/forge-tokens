@@ -36,6 +36,10 @@ def varre(caminho: str, desde: str | None):
     tok = collections.Counter()
     custo = 0.0
     turnos = 0
+    # O Claude Code grava a MESMA resposta em mais de uma linha do .jsonl (mesmo
+    # `message.id`, uuids diferentes — uma linha por bloco de conteúdo). Medido aqui,
+    # o fator é ~2,2x. Sem esta deduplicação, tokens, custo e turnos vêm dobrados.
+    vistos = set()
     for linha in open(caminho, errors="replace"):
         try:
             d = json.loads(linha)
@@ -49,6 +53,11 @@ def varre(caminho: str, desde: str | None):
         u = msg.get("usage") or {}
         if not u:
             continue
+        mid = msg.get("id")
+        if mid:
+            if mid in vistos:
+                continue
+            vistos.add(mid)
         turnos += 1
         p_in, p_out = PRECO[familia(msg.get("model"))]
         entrada = u.get("input_tokens", 0) or 0
