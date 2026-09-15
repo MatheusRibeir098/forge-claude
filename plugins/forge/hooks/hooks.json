@@ -1,0 +1,54 @@
+{
+  "description": "Hooks do Forge — teto de turnos por invocação de subagente (com delegação opcional ao rtk em Bash liberado), bloqueio de escrita de código pelo orquestrador, e decisão automática de quando o tester é obrigatório após um dev. Scripts .sh são chamados via 'bash' e o script .py via 'python3' (em vez de depender do shebang + bit de execução, que a instalação do plugin pode não preservar) — mais robusto entre sistemas operacionais e formas de instalação.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/deny-orchestrator-code-edits.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Read|Edit|Write|Glob|Grep|WebSearch|WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-turn-budget.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/rtk-root.sh\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Read|Edit|Write|Glob|Grep|WebSearch|WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-turn-budget.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/require-tester.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

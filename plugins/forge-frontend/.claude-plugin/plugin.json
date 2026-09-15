@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "forge-frontend",
+  "displayName": "Forge Frontend",
+  "version": "0.1.0",
+  "description": "Skills de frontend usadas pelo subagente dev do Forge: TypeScript, padrões React, Tailwind, responsividade, dark mode, animações, performance, design de UI e conteúdo. Opcional — sem ele o Forge continua funcionando em projeto sem interface.",
+  "author": {
+    "name": "Dati"
+  },
+  "license": "MIT",
+  "keywords": [
+    "frontend",
+    "react",
+    "tailwind",
+    "typescript",
+    "ui-design"
+  ]
+}

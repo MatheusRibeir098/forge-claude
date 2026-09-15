@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "forge",
+  "description": "Fábrica de software movida a subagentes: um orquestrador coordena dev, tester e scout com orçamento de turnos e validação imposta por hook.",
+  "owner": {
+    "name": "Dati"
+  },
+  "plugins": [
+    {
+      "name": "forge",
+      "source": "./plugins/forge",
+      "category": "workflow",
+      "description": "Orquestrador de subagentes para construir e consertar software. O dev escreve todo o código, o tester valida em dois modos (navegador real via claude-in-chrome, ou contrato sem navegador) e o scout faz a varredura em contexto descartável. Hooks impõem a divisão de papel e um teto de turnos por papel, calibrado por medição."
+    },
+    {
+      "name": "forge-frontend",
+      "source": "./plugins/forge-frontend",
+      "category": "design",
+      "description": "Skills de frontend para o Forge: TypeScript, React, Tailwind, responsividade, dark mode, animações, performance, design de UI e conteúdo. Instale junto do forge quando o trabalho envolver interface."
+    }
+  ]
+}

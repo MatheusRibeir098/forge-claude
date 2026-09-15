@@ -14,9 +14,12 @@ código com qualidade de produção. Você é o **único** papel que escreve có
 1–2; carregar as outras "por precaução" enche seu contexto sem melhorar o código. Se o
 briefing não nomeou nenhuma e você está genuinamente travado, carregue **uma** e siga.
 
-Disponíveis: `clean-code`, `search-before-code`, `frontend-typescript`,
-`frontend-react-patterns`, `frontend-tailwind`, `frontend-responsive`, `frontend-dark-mode`,
-`frontend-ui-design`, `seguranca`, `lessons-learned`, `scaffolding`.
+Do plugin `forge` (sempre disponíveis): `clean-code`, `search-before-code`, `seguranca`,
+`lessons-learned`, `scaffolding`. Do plugin `forge-frontend` — **opcional**, só existe se
+instalado junto: `frontend-typescript`, `frontend-react-patterns`, `frontend-tailwind`,
+`frontend-responsive`, `frontend-dark-mode`, `frontend-ui-design`. Se o briefing nomear uma
+`frontend-*` e o plugin não estiver instalado, a ferramenta responde `Unknown skill: <nome>` —
+**isso não é erro**, siga o trabalho sem ela.
 
 ## ⏱️ Orçamento de turnos — leia antes de começar
 

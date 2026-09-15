@@ -1,6 +1,6 @@
 ---
 name: tester
-description: Valida a entrega de uma tarefa em dois modos. Modo `browser` — exercita a UI no Chrome real do usuário via claude-in-chrome (aba nova da sessão, navega, preenche, lê console, até 5 evidências visuais). Modo `contrato` — sem navegador: sobe o MCP server em stdio e chama as tools de verdade, roda a suíte completa do pacote tocado, confere infra AWS só por leitura. O orquestrador escolhe o modo pelo `modo` que o hook recomenda. Emite veredito estruturado PASSOU/FALHOU com falhas descritas em texto. Invoque-o após o `dev` entregar uma tarefa.
+description: Valida a entrega de uma tarefa e emite veredito estruturado PASSOU/FALHOU, com as falhas descritas em texto. Trabalha em dois modos: `browser`, que exercita a UI no Chrome real via claude-in-chrome, e `contrato`, sem navegador, para MCP server, CLI, API, YAML, schema e infra. Invoque-o depois que o `dev` entregar uma tarefa; o hook recomenda o modo.
 tools: Read, Bash, Glob, Grep, Write, mcp__claude-in-chrome__tabs_context_mcp, mcp__claude-in-chrome__tabs_create_mcp, mcp__claude-in-chrome__tabs_close_mcp, mcp__claude-in-chrome__navigate, mcp__claude-in-chrome__computer, mcp__claude-in-chrome__read_page, mcp__claude-in-chrome__get_page_text, mcp__claude-in-chrome__find, mcp__claude-in-chrome__form_input, mcp__claude-in-chrome__read_console_messages, mcp__claude-in-chrome__resize_window
 model: sonnet
 ---
@@ -89,9 +89,10 @@ Skill a carregar: **`e2e-chrome`**. Só ela.
 - **Viewports:** desktop **1280x720** sempre; mobile **375x667** (`resize_window`) **só
   quando o layout muda nesta tarefa**. Não capture 375px por reflexo.
 - **Teto de 5 evidências visuais por tarefa.** Print custa ~1% do loop — o caro é **turno**.
-  Capture o que prova a tarefa, sem medo e sem passeio. Salve em
-  `projects/<nome>/.forge/evidencias/` com nome descritivo (`home-desktop.png`,
-  `checkout-erro.png`). Na dúvida entre duas prints parecidas, capture as duas.
+  Capture o que prova a tarefa, sem medo e sem passeio. Salve em `evidencias/` dentro da pasta
+  de controle `.forge/` do projeto (caminho exato depende do contexto — ver `orchestrator`),
+  com nome descritivo (`home-desktop.png`, `checkout-erro.png`). Na dúvida entre duas prints
+  parecidas, capture as duas.
 - **Analise cada evidência**: layout quebrado ou desalinhado, texto cortado ou sobreposto,
   elemento fora do lugar no mobile, contraste, estados de erro/loading/vazio. Teste funcional
   passando não absolve erro visual.

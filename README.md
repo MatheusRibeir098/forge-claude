@@ -7,7 +7,8 @@
 **Você descreve. O Forge decompõe, delega para um time de subagentes e entrega validado.**
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1%2B-D97757?style=flat-square)](https://claude.com/claude-code)
-[![Subagentes](https://img.shields.io/badge/subagentes-dev%20%2B%20tester-6366f1?style=flat-square)](#o-time)
+[![Subagentes](https://img.shields.io/badge/subagentes-scout%20%2B%20dev%20%2B%20tester-6366f1?style=flat-square)](#o-time)
+[![Plugin](https://img.shields.io/badge/instala%20como-plugin-8b5cf6?style=flat-square)](#instalação)
 [![Paralelismo](https://img.shields.io/badge/paralelismo-por%20padrão-16a34a?style=flat-square)](#-paralelismo-é-o-padrão)
 [![Sem tmux](https://img.shields.io/badge/tmux-não%20precisa-64748b?style=flat-square)](#por-que-não-tem-tmux)
 
@@ -17,12 +18,12 @@
 
 ## O que é
 
-O Forge transforma o Claude Code num **orquestrador de projetos**. Você conversa com **um
-único agente** — ele levanta os requisitos, escreve a spec, quebra em tarefas atômicas e
-coordena dois subagentes especializados até o software existir, funcionando e testado.
-
-Você nunca abre um terminal de agente. Nunca fala com o `dev`. Nunca fica olhando um
-processo para saber se acabou. Você conversa, ele reporta.
+O Forge é um **plugin do Claude Code** que transforma sua sessão num **orquestrador de
+projetos**. Você conversa com **um único agente** — ele levanta os requisitos, escreve a
+spec, quebra em tarefas atômicas e coordena um time de subagentes especializados (`scout`,
+`dev`, `tester`) até o software existir, funcionando e testado. Você nunca abre um terminal
+de agente, nunca fala com o `dev` diretamente, nunca fica olhando um processo para saber se
+acabou — você conversa, ele reporta.
 
 ```
 você ──▶ 🔥 Forge ──┬──▶ 🔭 scout    lê, varre, pesquisa, e conta em 5 linhas
@@ -110,9 +111,11 @@ decidir; e o do `dev`, para escrever código.
 
 ### 📸 Nada passa sem prova
 
-O `tester` não aprova por leitura de código. Ele sobe a aplicação em background, roda E2E com
-Playwright, captura prints do que a tarefa mudou, **analisa as imagens** e devolve um veredito
-estruturado. Reprovou? O erro volta para o `dev` como briefing de correção, com contagem de
+O `tester` não aprova por leitura de código. Em modo `browser` ele sobe a aplicação em
+background, exercita a UI no Chrome real do usuário via `claude-in-chrome`, captura prints do
+que a tarefa mudou e **analisa as imagens**; em modo `contrato` (MCP/CLI/API sem front) chama
+as tools de verdade com payload real, sem print. Nos dois modos devolve um veredito
+estruturado — reprovou? O erro volta para o `dev` como briefing de correção, com contagem de
 tentativas.
 
 As imagens ficam **dentro do contexto do tester**, que é descartado ao fim da invocação — o
@@ -152,9 +155,9 @@ por turno em invocações solo contra 3.349 em lote. O Invariante 5 fica de pé.
 ### 🧭 Estado em disco, não na memória
 
 Cada projeto carrega `.forge/tasks.md` (backlog e lotes), `.forge/progress.md` (ciclos
-recentes), `.forge/progress-historico.md` (arquivo) e `.forge/screenshots/`. Fechou o notebook
-no meio? Reabre e continua de onde parou — a fonte da verdade está em arquivo, não no
-histórico da conversa.
+recentes), `.forge/progress-historico.md` (arquivo) e `.forge/evidencias/` (prints do
+`tester`). Fechou o notebook no meio? Reabre e continua de onde parou — a fonte da verdade
+está em arquivo, não no histórico da conversa.
 
 ## O time
 
@@ -163,41 +166,59 @@ histórico da conversa.
 | 🔥 **Forge** | a sessão principal | requisitos, spec, decomposição, briefings, revisão, relatório |
 | 🔭 **scout** | subagente (`haiku`) | ler, varrer, procurar, pesquisar — não escreve nada |
 | 🛠️ **dev** | subagente (`sonnet`, opus sob demanda) | **todo** o código de produto |
-| 🔍 **tester** | subagente (`sonnet`) | build, E2E, screenshots, veredito |
+| 🔍 **tester** | subagente (`sonnet`) | valida em dois modos: `browser` — exercita a UI no Chrome real do usuário via `claude-in-chrome` (aba nova, navega, preenche, até 5 prints); `contrato` — sem navegador, sobe o servidor/MCP em stdio, chama as tools de verdade e confere infra AWS só por leitura |
 
 Cada subagente devolve **JSON estruturado** — o orquestrador decide olhando dados, nunca
 adivinhando por texto de terminal.
 
 ## Instalação
 
-```bash
-git clone https://github.com/MatheusRibeir098/forge-claude.git ~/forge-claude
-cd ~/forge-claude && npx playwright install chromium
+```
+/plugin marketplace add MatheusRibeir098/forge-claude
+/plugin install forge@forge
+/plugin install forge-frontend@forge   # opcional — só se o trabalho tiver interface
 ```
 
-Pré-requisitos: [Claude Code](https://claude.com/claude-code) 2.1+ autenticado, `node` e `pnpm`.
+Para uso local (desenvolvendo o próprio Forge, ou testando antes de publicar), o marketplace
+também pode ser adicionado por diretório:
+
+```
+/plugin marketplace add ~/forge-claude
+```
+
+Pré-requisitos: [Claude Code](https://claude.com/claude-code) 2.1+ autenticado. Para o modo
+`browser` do `tester`, a extensão `claude-in-chrome` instalada e com permissão liberada nos
+sites que a tarefa vai exercitar.
+
+**Primeiro passo depois de instalar: rode `/forge-setup`.** Um plugin não carrega
+`permissions` nem `CLAUDE.md` do repositório de quem o instala — só agentes, comandos, hooks
+e skills viajam dentro dele. O `/forge-setup` escreve no `CLAUDE.md` do seu repositório o
+bloco de invariantes (a seção "As regras da casa" abaixo) e as `permissions` que os hooks
+esperam; sem isso os hooks rodam, mas a sessão não conhece as regras que eles impõem.
+
+## Contextos de operação
+
+O Forge opera em dois contextos, detectados pelo hook a partir da raiz do projeto:
+
+- **Modo fábrica** — a raiz tem `projects/` **e** `templates/prompt.template.md` (é o caso
+  deste próprio repositório). Os arquivos de controle ficam em `projects/<nome>/.forge/`, um
+  por projeto gerado.
+- **Modo repo atual** — o plugin instalado em qualquer outro repositório. Os arquivos de
+  controle ficam em `.forge/` na raiz do repo onde a sessão roda.
 
 ## Uso
 
-```bash
-~/forge-claude/bin/forge
-```
-
-Ou, para virar um comando de qualquer lugar (no `~/.zshrc`):
-
-```bash
-forge() { cd ~/forge-claude && claude --forward-subagent-text "$@"; }
-```
-
-Dentro da sessão:
+Dentro da sessão, com o plugin instalado:
 
 | Comando | O que faz |
 |---|---|
+| `/forge-setup` | Primeiro passo — escreve permissions e invariantes no seu `CLAUDE.md` |
 | `/forge` | Hub — pergunta se é projeto novo ou fix |
 | `/forge-new <ideia>` | Vai direto para criação do zero |
 | `/forge-fix <projeto + pedido>` | Bug ou feature em projeto existente |
 
-Acompanhe os subagentes em **`/tasks`**.
+Acompanhe os subagentes em **`/tasks`**. Para desenvolver o próprio Forge (modo fábrica deste
+repositório), `bin/forge` abre uma sessão já dentro dele.
 
 ## Por que não tem tmux
 
@@ -209,7 +230,9 @@ foreground.
 
 ## As regras da casa
 
-Seis invariantes valem em qualquer momento da sessão, sempre no contexto (`CLAUDE.md`):
+Seis invariantes valem em qualquer momento da sessão, sempre no contexto. Como plugin, o
+Forge não carrega `CLAUDE.md` — é o `/forge-setup` que grava este bloco no `CLAUDE.md` do seu
+repositório:
 
 | # | Invariante |
 |---|---|
@@ -222,34 +245,42 @@ Seis invariantes valem em qualquer momento da sessão, sempre no contexto (`CLAU
 
 ## Skills incluídas
 
-Carregadas sob demanda, não de uma vez:
+Carregadas sob demanda, não de uma vez. O plugin `forge` traz 13:
 
 **Orquestração** — `orchestrator`, `meta-prompt`, `spec-driven`, `scaffolding`, `lessons-learned`
-**Qualidade** — `clean-code`, `testing-strategy`, `e2e-playwright`, `seguranca`, `search-before-code`
-**Frontend** — `modern-design`, `ui-design`, `react-patterns`, `typescript`, `tailwind`, `responsive`, `dark-mode`, `animations`, `performance`, `content-ux`
+**Qualidade** — `clean-code`, `testing-strategy`, `e2e-chrome`, `seguranca`, `search-before-code`
 **Operação** — `safe-operations`, `no-deploy-no-push`, `git-profiles`
+
+O plugin `forge-frontend` — **opcional**, instale junto quando o trabalho tiver interface —
+traz mais 10: `frontend-typescript`, `frontend-react-patterns`, `frontend-tailwind`,
+`frontend-responsive`, `frontend-dark-mode`, `frontend-modern-design`, `frontend-ui-design`,
+`frontend-animations`, `frontend-performance`, `frontend-content-ux`. Se um briefing citar
+uma `frontend-*` sem o plugin instalado, a ferramenta responde `Unknown skill: <nome>` — não
+é erro, o trabalho segue sem ela.
 
 ## Estrutura
 
 ```
 forge-claude/
-├── CLAUDE.md                  # os 6 invariantes — sempre no contexto
-├── bin/forge                  # entrypoint
+├── .claude-plugin/marketplace.json   # declara os dois plugins
+├── bin/forge                  # entrypoint (modo fábrica deste repo)
 ├── bin/forge-tokens           # medidor de consumo (lê os transcripts)
-├── .claude/
-│   ├── settings.json          # permissões + hook de imposição de papel
-│   ├── agents/{dev,tester}.md
-│   ├── commands/{forge,forge-new,forge-fix}.md
-│   ├── hooks/
-│   │   ├── deny-orchestrator-code-edits.sh   # quem orquestra não codifica
-│   │   ├── subagent-turn-budget.sh           # teto de turnos + o dev não valida
-│   │   └── require-tester.py                 # lembra de validar quando o dev entrega UI
-│   └── skills/                # 23 skills carregadas sob demanda
+├── plugins/
+│   ├── forge/                 # plugin principal
+│   │   ├── agents/{dev,tester,scout}.md
+│   │   ├── commands/{forge,forge-new,forge-fix,forge-setup}.md
+│   │   ├── hooks/              # imposição de papel + teto de turnos, via hooks.json
+│   │   └── skills/             # as 13 skills do plugin
+│   └── forge-frontend/
+│       └── skills/             # as 10 skills frontend-*, opcionais
 ├── templates/                 # prompt.template.md, .npmrc
-└── projects/<nome>/           # projetos gerados (não versionados aqui)
+└── projects/<nome>/           # projetos gerados em modo fábrica (não versionados aqui)
     ├── prompt.md              # a spec
-    └── .forge/                # tasks.md · progress.md · progress-historico.md · screenshots/
+    └── .forge/                # tasks.md · progress.md · progress-historico.md · evidencias/
 ```
+
+Em modo repo atual (plugin instalado em outro repositório) não existe `projects/`: a pasta de
+controle é `.forge/` na raiz desse repo, escrita ali pelo `/forge-setup`.
 
 ## RTK — opcional, e de propósito
 

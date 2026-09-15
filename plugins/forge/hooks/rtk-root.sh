@@ -6,7 +6,9 @@
 # veredito de permissão no mesmo evento Bash.
 
 payload=$(cat)
-RTK_BIN="${FORGE_RTK_BIN:-/home/math3us/.local/bin/rtk}"
+# rtk é opcional: $FORGE_RTK_BIN > `rtk` no PATH > vazio (degrada em silêncio — ver
+# rtk_delegate_if_allowed em lib/rtk-bash-delegate.sh, que só delega com binário executável).
+RTK_BIN="${FORGE_RTK_BIN:-$(command -v rtk 2>/dev/null || true)}"
 
 agent_id=$(FORGE_HOOK_PAYLOAD="$payload" python3 -c '
 import json, os

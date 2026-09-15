@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Testes do hook `require-tester.py` — só stdlib, sem dependência externa.
 
-    python3 .claude/hooks/tests/test_require_tester.py
+    python3 plugins/forge/hooks/tests/test_require_tester.py
 
 Todo payload é montado a partir de um PostToolUse REAL capturado na CLI 2.1.272
 (`fixtures/posttooluse-agent-completed.json`): copiamos o envelope de verdade e trocamos

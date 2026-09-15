@@ -5,9 +5,9 @@ description: Use durante o loop de execução do Forge — como decompor um proj
 
 # Orquestração por subagentes (sem tmux)
 
-Esta skill descreve como o **Forge** (a sessão principal, que é o antigo "monitor")
-coordena os subagentes `dev` e `tester`. A comunicação é por **invocação de subagente com
-retorno estruturado** — não há tmux, send-keys, capture-pane, sleep ou scraping de terminal.
+Esta skill descreve como o **Forge** (a sessão principal) coordena os subagentes `dev` e
+`tester`. A comunicação é por **invocação de subagente com retorno estruturado** — não há
+tmux, send-keys, capture-pane, sleep ou scraping de terminal.
 
 ## Modelo mental
 
@@ -77,7 +77,9 @@ pesquisando a API do X para a D."* Se algo ficou serial, diga a dependência que
 
 ## Arquivos de controle (fonte de verdade)
 
-Ficam em `projects/<nome>/.forge/`:
+Ficam na pasta de controle `.forge/` do projeto — em **modo fábrica** é
+`projects/<nome>/.forge/`; em **modo repo atual** (plugin em outro repositório) é `.forge/`
+na raiz do repo. O `/forge-setup` prepara o contexto certo.
 
 - **`tasks.md`** — backlog de tarefas atômicas, ordenadas por dependência. Formato:
   ```markdown
@@ -196,17 +198,16 @@ Invoque o `dev` com o briefing — um por tarefa do lote, todos na mesma mensage
 ## O `tester` não é opcional
 
 Medido nos transcripts: **4 invocações de `tester` contra 180 de `dev`** — 78% dos `dev`
-acabaram validando a si mesmos. Duas consequências, as duas ruins:
+acabaram validando a si mesmos. Duas consequências ruins:
 
 - **Qualidade:** quem escreveu o código virou quem aprova o código. O `tester` existe para ser
   a palavra final, com E2E e prints. A lacuna real é menor do que a razão 4:180 sugere — das
   180 invocações de `dev`, só **36** tocaram UI ou rota/API; nas outras 144 (Python, script,
   config) o `tester` não se aplica. Faltaram **~32 validações**, não 176.
 - **Custo:** `dev` que valida a si mesmo rodou 84 turnos de mediana contra 32 de quem não
-  valida, e 20% deles estouraram 121+ turnos (US$ 334, 39% do custo do grupo). Validar dentro
-  do `dev` é caro porque a iteração "sobe → testa → falha → corrige → sobe" acontece no
-  contexto que é reenviado inteiro a cada turno. No `tester` esse mesmo ciclo roda em contexto
-  limpo, que é descartado no fim.
+  valida, e 20% deles estouraram 121+ turnos (US$ 334, 39% do custo do grupo). Caro porque o
+  ciclo "sobe → testa → falha → corrige" roda no contexto reenviado a cada turno; no `tester`
+  ele roda em contexto limpo e descartável.
 
 **A causa raiz é esta skill não ser lida.** Ela foi carregada **6 vezes em 38 sessões (16%)** —
 sem ela o orquestrador improvisa o ciclo, e o `tester` é o primeiro passo a cair. Por isso a
@@ -216,9 +217,8 @@ regra agora não depende de você ter lido nada:
   bater na app por HTTP (ele mantém `tsc`/`build`/lint/teste unitário e qualquer script
   próprio, inclusive em background — é o `build_ok` que ele reporta);
 - outro hook **injeta um lembrete** quando você despacha um `dev` cuja tarefa envolve UI ou
-  rota, avisando que aquela tarefa vai precisar do `tester`. Ele lê o briefing, não o retorno:
-  a invocação de subagente é assíncrona, então no momento em que o hook roda o `dev` ainda
-  está trabalhando (verificado com payload real na CLI 2.1.260).
+  rota, avisando que vai precisar do `tester`. Ele lê o briefing, não o retorno — a invocação é
+  assíncrona: o hook roda enquanto o `dev` ainda trabalha (verificado na CLI 2.1.260).
 
 Logo: **toda tarefa com UI, rota ou endpoint precisa de uma invocação de `tester`.** Se você
 não invocar, ninguém validou. Use os `comandos_para_subir` que o `dev` devolveu.
@@ -323,7 +323,7 @@ mais forte do Forge** — mais que modelo ou evidência visual.
 | **Turnos por invocação** | o dominante | Tarefa atômica de verdade; `PARCIAL` no teto e re-loteio |
 | **Bash** | 61% do que os subagentes ingeriram | No briefing: `Grep`/`Glob`/`Read` em vez de `grep`/`find`/`cat`; filtrar na fonte |
 | **`Read` de arquivo inteiro** | 31% do ingerido; 74% das leituras sem `limit` | No briefing: nomeie os arquivos e mande usar `limit`/`offset`; proíba releitura |
-| **Modelo** | opus custou 2,8× sonnet por invocação | `sonnet` padrão; opus só em arquitetura/Loop Travado |
+| **Modelo** | opus custou 2,8× sonnet/invocação | `sonnet` padrão; opus só em arquitetura/Loop Travado |
 | **Lote acoplado** | retrabalho é o pior desperdício | Arquivos disjuntos, teto de 3–4 |
 | **Evidências visuais** | **~1%** — não é o vilão | `tester` inteiro = 5% dos tokens de subagente. Teto de 5/tarefa; você lê só o JSON. Não corte validação para "economizar" |
 | **Varredura no seu próprio contexto** | o contexto principal chegou a 652 mil tokens/turno (média de 449 mil após o turno 300) | Delegue ao `scout`: o lixo da busca morre com ele |

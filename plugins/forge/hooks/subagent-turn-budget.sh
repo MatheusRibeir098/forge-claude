@@ -48,10 +48,35 @@
 # limite é a compactação da própria sessão, não este contador.
 
 payload=$(cat)
-RTK_BIN="${FORGE_RTK_BIN:-/home/math3us/.local/bin/rtk}"
+# rtk é opcional: usa $FORGE_RTK_BIN se definido, senão procura `rtk` no PATH, senão
+# degrada em silêncio (RTK_BIN fica vazio e a delegação lá embaixo simplesmente não roda —
+# nunca imprime erro nem bloqueia por falta do binário). Sem caminho absoluto de máquina:
+# a máquina de outra pessoa da Dati pode não ter o rtk instalado.
+RTK_BIN="${FORGE_RTK_BIN:-$(command -v rtk 2>/dev/null || true)}"
+
+# Estado dos contadores de turno: fora do repo de quem instalou o plugin (senão sujaria o
+# git de quem instalou). Preferência: $FORGE_STATE_DIR explícito > $XDG_RUNTIME_DIR >
+# $TMPDIR > /tmp, sempre sob um subcaminho próprio (forge/turns) e separado por sessão
+# quando o payload traz session_id — assim invocações concorrentes de sessões diferentes
+# não disputam o mesmo diretório de contadores.
+if [ -z "${FORGE_STATE_DIR:-}" ]; then
+    _forge_runtime_base="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
+    _forge_session_id=$(FORGE_HOOK_PAYLOAD="$payload" python3 -c '
+import json, os, re
+try: d = json.loads(os.environ["FORGE_HOOK_PAYLOAD"])
+except Exception: raise SystemExit
+sid = d.get("session_id") or ""
+print(re.sub(r"[^A-Za-z0-9_-]", "", sid)[:120])
+' 2>/dev/null)
+    if [ -n "$_forge_session_id" ]; then
+        FORGE_STATE_DIR="${_forge_runtime_base}/forge/turns/${_forge_session_id}"
+    else
+        FORGE_STATE_DIR="${_forge_runtime_base}/forge/turns"
+    fi
+fi
 
 FORGE_HOOK_PAYLOAD="$payload" \
-FORGE_STATE_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}/.claude/state/turns" \
+FORGE_STATE_DIR="$FORGE_STATE_DIR" \
 python3 -c '
 import json, os, sys, time, pathlib
 

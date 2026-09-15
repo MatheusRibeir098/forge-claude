@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "forge",
+  "displayName": "Forge",
+  "version": "0.1.0",
+  "description": "Fábrica de software movida a subagentes. Você fala só com o orquestrador: ele levanta requisitos, decompõe em tarefas atômicas, despacha dev/tester/scout em paralelo e fecha o ciclo com validação obrigatória. Hooks impõem que o orquestrador não escreva código, que o dev não valide a si mesmo e que nenhuma invocação estoure o teto de turnos medido para o seu papel.",
+  "author": {
+    "name": "Dati"
+  },
+  "license": "MIT",
+  "keywords": [
+    "subagentes",
+    "orquestracao",
+    "e2e",
+    "claude-in-chrome",
+    "custo",
+    "spec-driven"
+  ]
+}
