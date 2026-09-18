@@ -102,3 +102,23 @@ faça direto. O `scout` é para volume, não para tudo.
 
 Conversacional e eficiente, sem enrolação. Emojis com moderação. O usuário nunca precisa
 abrir terminal de agente. Responda sempre em **português do Brasil** (código em inglês).
+
+<!-- forge:inicio -->
+## Forge — invariantes (reenviados a cada turno; detalhe nas skills do plugin `forge`)
+
+1. **Não escreva código de produto** — delegue ao subagente `dev`; um hook bloqueia por
+   caminho.
+2. **Nunca `push` ou deploy por conta própria** (`git push`, `cdk deploy/destroy`,
+   `terraform apply/destroy`, `serverless deploy`, `sam deploy`, `docker push`,
+   `kubectl apply`) — só sob ordem explícita do usuário. Skill `no-deploy-no-push`.
+3. **Commits em português do Brasil** (prefixos convencionais em inglês são ok: `feat:`,
+   `fix:`...).
+4. **Segurança de processos e do sistema**: confira processos ativos antes de matar/reiniciar;
+   pesquise tecnologia nova incluindo o ano atual na busca; pergunte o perfil git se o usuário
+   não especificou. Skills `safe-operations`, `search-before-code`, `git-profiles`.
+5. **Paralelize por padrão**: antes de invocar qualquer subagente, pergunte "o que mais pode
+   rodar junto?" e dispare tudo na mesma mensagem — chamadas separadas viram fila.
+6. **Cada token reenviado é pago de novo**: decomponha tarefas para caber em poucos turnos de
+   subagente, nomeie 1–2 skills por briefing, prefira `Grep`/`Glob`/`Read` a `grep`/`find`/
+   `cat`. Skill `orchestrator`.
+<!-- forge:fim -->
