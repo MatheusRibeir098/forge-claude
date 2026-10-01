@@ -2,7 +2,7 @@
 
 ## Resumo executivo
 
-O Forge é um plugin do Claude Code que organiza o trabalho de agente de IA em três papéis fixos — orquestrador, `dev` e `tester` — com a divisão imposta por hook, não por instrução que o modelo possa ignorar. Medido em 30 dias de uso real: as invocações que passaram de 60 turnos foram 8,8% do total e metade do custo de subagentes, porque o contexto de um agente é reenviado inteiro a cada turno — o mesmo turno custa 8,7 vezes mais numa invocação longa do que numa curta. O plugin embute limites que atacam esse ponto, skills de guardrail para conta AWS real, e um mecanismo de distribuição: quem publica uma melhoria atualiza a ferramenta de toda a equipe. Este documento reúne o problema medido, o mecanismo que o resolve em parte, o que a ferramenta cobre além de criar projeto, e o que ainda não está comprovado.
+O Forge é um plugin do Claude Code que organiza o trabalho de agente de IA em três papéis fixos — orquestrador, `dev` e `tester` — com a divisão imposta por hook, não por instrução que o modelo possa ignorar. Medido em 30 dias de uso real: as invocações que passaram de 60 turnos foram 8,8% do total e metade do custo de subagentes, porque o contexto de um agente é reenviado inteiro a cada turno — o mesmo turno custa 8,7 vezes mais numa invocação longa do que numa curta. O plugin embute limites que atacam esse ponto, skills de guardrail para ambiente real, e um mecanismo de distribuição: quem publica uma melhoria atualiza a ferramenta de toda a equipe. Este documento reúne o problema medido, o mecanismo que o resolve em parte, o que a ferramenta cobre além de criar projeto, e o que ainda não está comprovado.
 
 ## O problema, com os números
 
@@ -18,7 +18,7 @@ Dado externo: 93% das organizações já tiveram ao menos um incidente de infrae
 
 ## O que é a ferramenta
 
-O Forge é um plugin do Claude Code publicado em `github.com/datisolucoesemti/dati-forge-plugin` (repositório privado da organização). O usuário conversa com **um orquestrador único**, que levanta requisitos, monta a especificação, quebra o trabalho em tarefas atômicas e despacha subagentes — em paralelo, quando possível.
+O Forge é um plugin do Claude Code publicado em `github.com/MatheusRibeir098/forge-claude`. O usuário conversa com **um orquestrador único**, que levanta requisitos, monta a especificação, quebra o trabalho em tarefas atômicas e despacha subagentes — em paralelo, quando possível.
 
 ## Como funciona: os três papéis e os hooks que os impõem
 
@@ -28,26 +28,25 @@ O Forge é um plugin do Claude Code publicado em `github.com/datisolucoesemti/da
 
 O ponto central do desenho é que essa divisão é **imposta por hook**, não por instrução de prompt que o modelo pode esquecer numa conversa longa. Um hook bloqueia o orquestrador de escrever código de produto; outro bloqueia o `dev` de validar a própria entrega (subir servidor, rodar navegador/E2E, print, HTTP); um terceiro conta as chamadas de ferramenta de cada invocação e aplica um teto por papel, calibrado pela mediana medida no uso real. No teto, a invocação devolve o trabalho já feito como `PARCIAL`, e o orquestrador re-lotea o restante em vez de reiniciar a tarefa. Prompt é sugestão; hook é regra que se aplica mesmo quando o modelo "decidiria" diferente.
 
-O `tester` opera em dois modos: `browser` (Chrome real do usuário, sempre serial, teto de evidências por tarefa) e `contrato` (sem navegador: sobe o servidor MCP, chama as ferramentas com payload real, roda a suíte de teste do pacote tocado, e confere infraestrutura AWS **só por leitura** — nunca comandos que criam, alteram, apagam ou fazem deploy).
+O `tester` opera em dois modos: `browser` (Chrome real do usuário, sempre serial, teto de evidências por tarefa) e `contrato` (sem navegador: sobe o servidor MCP, chama as ferramentas com payload real, roda a suíte de teste do pacote tocado, e confere infraestrutura **só por leitura** — nunca comandos que criam, alteram, apagam ou fazem deploy).
 
 ## O que muda no dia a dia
 
 Quem hoje conversa direto com um agente genérico perde tempo repetindo contexto, corrigindo o agente quando ele valida a própria mudança, ou descobrindo tarde que uma investigação consumiu contexto enorme sem necessidade. Com o Forge: descrever o objetivo ao orquestrador, receber tarefas decompostas, ver `dev` e `tester` trabalharem em paralelo dentro de limites, revisar o que voltou — sem abrir terminal de agente. Serve tanto para construir um projeto do zero quanto para consertar um já existente.
 
-## Foco AWS e governança
+## Governança e segurança
 
-A empresa é parceira AWS e a maior parte do trabalho técnico acontece em conta AWS real — o que torna o risco citado acima (93% das organizações com incidente causado por IA) diretamente relevante. O plugin traz skills de guardrail que carregam sozinhas quando a tarefa é desse tipo:
+A maior parte do trabalho técnico acontece em ambiente real — o que torna o risco citado acima (93% das organizações com incidente causado por IA) diretamente relevante. O plugin traz skills e regras de guardrail que carregam sozinhas quando a tarefa é desse tipo:
 
-- **Identidade antes de agir** — `sts get-caller-identity --profile <perfil>` mostra conta, perfil e região antes de prosseguir.
+- **Identidade antes de agir** — conferir em qual conta, perfil ou ambiente o comando vai rodar antes de prosseguir. O `/forge:setup` pergunta se você quer um mapa local de credenciais (`~/.claude/skills/credenciais-ambiente/SKILL.md`), só com ponteiros, nunca o segredo.
 - **Leitura separada de mutação e destrutivo** — exploração nunca justifica escrita; ação que cria, altera ou apaga recurso exige pedido explícito.
-- **`aws` CLI irreversível bloqueado por permissão** — `cdk`/`terraform` deploy/destroy, `serverless deploy`, `docker push` não rodam por iniciativa própria.
-- **`cdk diff`/`terraform plan` lido com critério** — IAM mais permissivo, recurso com estado sem retenção, exposição pública nova.
-- **Custo de query no Athena** — cobrança por bytes escaneados, não por linhas; `LIMIT` não reduz o scan.
+- **Nunca push nem deploy sem ordem explícita** — a regra é genérica e vale para qualquer provedor; `docker push` e afins não rodam por iniciativa própria.
+- **Diff de infraestrutura lido com critério** — permissão mais ampla, recurso com estado sem retenção, exposição pública nova.
 - **Leitura de banco read-only**, `LIMIT` em exploração, cuidado com PII em log/relatório.
 
 ## Distribuição para a equipe
 
-Hoje, quando alguém descobre uma boa prática — um jeito mais seguro de rodar uma query Athena, um checklist que evita erro de IAM — ela fica na máquina dessa pessoa, sem virar hábito do resto do time. Publicada como skill do Forge, ela vira comportamento que a ferramenta aplica: quem faz o push atualiza a ferramenta de todo mundo. Esse é um pedido antigo de um membro do time. A empresa já distribui dois plugins por esse mecanismo — `forge` (orquestrador e os três papéis) e `forge-frontend` (skills de frontend do `dev`) — no mesmo marketplace da organização.
+Hoje, quando alguém descobre uma boa prática — um jeito mais seguro de rodar uma query pesada, um checklist que evita erro de permissão — ela fica na máquina dessa pessoa, sem virar hábito do resto do time. Publicada como skill do Forge, ela vira comportamento que a ferramenta aplica: quem faz o push atualiza a ferramenta de todo mundo. O repositório distribui dois plugins por esse mecanismo — `forge` (orquestrador e os três papéis) e `forge-frontend` (skills de frontend do `dev`) — no mesmo marketplace.
 
 ## Serve para qualquer trabalho, não só criar projeto
 
@@ -69,9 +68,9 @@ Os tetos são calibrados pela mediana real de chamadas de ferramenta que cada pa
 
 ## Como adotar
 
-1. `/plugin marketplace add datisolucoesemti/dati-forge-plugin`
-2. `/plugin install forge@forge`
-3. Opcional, para quem trabalha com interface: `/plugin install forge-frontend@forge`
+1. `/plugin marketplace add MatheusRibeir098/forge-claude`
+2. `/plugin install forge@forge-claude`
+3. Opcional, para quem trabalha com interface: `/plugin install forge-frontend@forge-claude`
 4. No repositório de trabalho, rodar `/forge:setup` — grava as permissões (allowlist que bloqueia deploy/push acidental) e os invariantes do `CLAUDE.md`, que não viajam dentro de um plugin.
 5. A partir daí: `/forge` (cria projeto ou entra em modo de conserto), ou os atalhos `/forge:new` e `/forge:fix`.
 
@@ -81,6 +80,6 @@ Os tetos são calibrados pela mediana real de chamadas de ferramenta que cada pa
 - **Subagente** — invocação isolada (`dev`, `tester`, `scout`) com contexto próprio, que devolve resultado estruturado.
 - **Skill** — instruções carregadas sob demanda quando a tarefa se encaixa nelas.
 - **Hook** — script que o Claude Code executa em pontos fixos do ciclo, capaz de bloquear ou modificar uma ação — mecanismo, não instrução que o modelo possa ignorar.
-- **Plugin** — pacote instalável de agentes, skills, hooks e comandos, distribuído por marketplace da organização.
+- **Plugin** — pacote instalável de agentes, skills, hooks e comandos, distribuído por marketplace.
 - **Turno** — uma rodada de interação dentro de uma invocação; unidade que mais pesa no custo.
 - **Contexto** — histórico de uma invocação, reenviado ao modelo a cada turno seguinte.

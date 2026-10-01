@@ -1,9 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
-  "name": "forge",
+  "name": "forge-claude",
   "description": "Fábrica de software movida a subagentes: um orquestrador coordena dev, tester e scout com orçamento de turnos e validação imposta por hook.",
   "owner": {
-    "name": "Dati"
+    "name": "MatheusRibeir098"
   },
   "plugins": [
     {

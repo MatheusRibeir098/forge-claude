@@ -3,3 +3,10 @@
 .DS_Store
 .idea/
 .vscode/
+__pycache__/
+
+# Config local desta máquina (fábrica que usa o plugin) — não faz parte do plugin
+CLAUDE.md
+.claude/
+projects/
+esteira-cicd-skeleton.md

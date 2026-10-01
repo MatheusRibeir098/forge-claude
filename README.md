@@ -1,13 +1,13 @@
 # Forge
 
-Plugin do Claude Code para a organização `datisolucoesemti`. Fábrica de software movida a
+Plugin do Claude Code. Fábrica de software movida a
 subagentes, com validação imposta por hook em vez de convenção.
 
 ## Início rápido
 
 ```
-/plugin marketplace add datisolucoesemti/dati-forge-plugin
-/plugin install forge@forge
+/plugin marketplace add MatheusRibeir098/forge-claude
+/plugin install forge@forge-claude
 /forge:setup      # no repositório onde você vai trabalhar
 /forge:forge
 ```
@@ -53,9 +53,9 @@ e por isso um hook avisa quando o orquestrador emenda leituras em vez de delegar
   **serial** (é o navegador real, uma janela só) e tem teto de **5 evidências visuais** por
   tarefa.
 - **`contrato`** — sem navegador: sobe o MCP server em stdio e chama as tools de verdade com
-  payload real, roda a suíte de teste completa do pacote tocado, confere infraestrutura AWS
-  **só por leitura** (`describe-*`/`list-*`/`get-*`; nunca `create-*`/`update-*`/`delete-*`
-  nem `deploy`/`apply`), e compara o resultado com o critério de aceite da tarefa.
+  payload real, roda a suíte de teste completa do pacote tocado, confere infraestrutura
+  **só por leitura** (listar, descrever, ler; nunca criar, alterar, apagar nem fazer
+  `deploy`/`apply`), e compara o resultado com o critério de aceite da tarefa.
 
 Um hook lê o **retorno estruturado** do `dev` (os arquivos que ele alterou e os comandos para
 subir) e recomenda automaticamente qual modo usar. O orquestrador não pergunta ao usuário qual
@@ -66,14 +66,14 @@ modo escolher — ele **decide e avisa** em uma linha.
 ### 1. Instalar o plugin (uma vez por máquina)
 
 ```
-/plugin marketplace add datisolucoesemti/dati-forge-plugin
-/plugin install forge@forge
+/plugin marketplace add MatheusRibeir098/forge-claude
+/plugin install forge@forge-claude
 ```
 
 O `forge-frontend` é **opcional** — instale só se você trabalha com interface:
 
 ```
-/plugin install forge-frontend@forge
+/plugin install forge-frontend@forge-claude
 ```
 
 Ele traz as 10 skills de frontend usadas pelo `dev` (TypeScript, React, Tailwind,
@@ -90,13 +90,16 @@ erro.
 
 Ele diagnostica a pasta, **mostra o que pretende gravar** e só escreve depois que você
 confirmar — nunca sobrescreve nada em silêncio. Se a pasta ainda não for uma "fábrica" (veja a
-seção seguinte), ele oferece criar uma. E oferece instalar o `rtk`, que é opcional.
+seção seguinte), ele oferece criar uma. Oferece instalar o `rtk`, que é opcional. E
+**pergunta** se você quer criar um mapa local de credenciais em
+`~/.claude/skills/credenciais-ambiente/SKILL.md` (perfis de nuvem de qualquer provedor,
+contas `gh`, tokens de API, service accounts — só ponteiros, nunca o segredo).
 
 Este passo é necessário porque duas coisas **não viajam dentro de um plugin**:
 
 - as `permissions` (`allow`/`ask`/`deny` de `.claude/settings.json`) — é ali que fica a rede
-  de segurança que impede `cdk deploy`, `terraform apply`, `docker push` e comando `aws`
-  destrutivo por iniciativa própria de um agente;
+  de segurança que impede `git push`, `docker push` e deploy
+  por iniciativa própria de um agente — a regra é: nunca push nem deploy sem ordem explícita;
 - os invariantes, que vão para o `CLAUDE.md` entre marcadores (rodar de novo atualiza, não
   duplica).
 
@@ -107,8 +110,7 @@ Este passo é necessário porque duas coisas **não viajam dentro de um plugin**
 ```
 
 Diagnostica e explica o que encontrou, sem alterar nada: contexto detectado, permissions,
-invariantes, hooks, `rtk`, uma demonstração inofensiva do guardrail de AWS, e se o `tester`
-enxerga o navegador.
+invariantes, hooks, `rtk`, e se o `tester` enxerga o navegador.
 
 ### 4. Usar
 
@@ -136,8 +138,8 @@ repositório tem `projects/` **e** `templates/prompt.template.md`; qualquer outr
 > `/forge:setup`. **Nunca abra o Claude Code direto dentro de `projects/<nome>/`** (um
 > projeto filho, com git próprio, dentro da fábrica): esse diretório não tem o `CLAUDE.md`
 > nem as `permissions` do Forge, e não há garantia de que os hooks do plugin disparem ali —
-> a rede de segurança inteira (bloqueio de código pelo orquestrador, guardrail de `aws`
-> destrutivo, teto de turnos) depende de rodar a partir da raiz. Se precisar mexer num
+> a rede de segurança inteira (bloqueio de código pelo orquestrador, regra de push e
+> deploy, teto de turnos) depende de rodar a partir da raiz. Se precisar mexer num
 > projeto específico, peça ao orquestrador na raiz da fábrica — ele sabe onde cada um está.
 
 ## Comandos
@@ -148,10 +150,10 @@ repositório tem `projects/` **e** `templates/prompt.template.md`; qualquer outr
 - `/forge:fix` — atalho que entra direto no modo fix/implementação de um projeto existente.
 - `/forge:setup` — prepara o repositório atual para rodar o Forge: grava as `permissions`
   (allow/ask/deny) em `.claude/settings.json` e os invariantes no `CLAUDE.md`; opcionalmente
-  cria a fábrica de projetos e/ou instala o `rtk`.
+  cria a fábrica de projetos, instala o `rtk` e/ou cria o mapa local de credenciais.
 - `/forge:doctor` — diagnostica o ambiente e explica o que encontrou, sem alterar nada:
-  contexto detectado, `permissions`, invariantes, hooks, `rtk`, uma demonstração inofensiva
-  do guardrail de AWS, e se o `tester` enxerga as ferramentas do navegador.
+  contexto detectado, `permissions`, invariantes, hooks, `rtk`, e se o `tester` enxerga as
+  ferramentas do navegador.
 
 Passo a passo prático de uso, com exemplos: [`docs/tutorial.md`](docs/tutorial.md).
 
@@ -200,7 +202,7 @@ Para rodar os testes do hook que decide quando o `tester` é obrigatório:
 python3 plugins/forge/hooks/tests/test_require_tester.py
 ```
 
-Além dos testes de hook, o plugin traz uma suíte de avaliação de **comportamento** em `plugins/forge/evals/` — três casos que verificam o que instrução em markdown não consegue garantir sozinha: que um pedido de comando AWS destrutivo não é executado, que a conta é confirmada antes de agir, e que uma investigação não vira loop de escrever código. Rode com `claude plugin eval` (custa tokens: cada caso é uma execução de modelo). `claude plugin validate .` faz a checagem estática de schema, sem custo.
+Além dos testes de hook, o plugin traz uma suíte de avaliação de **comportamento** em `plugins/forge/evals/` — casos que verificam o que instrução em markdown não consegue garantir sozinha, como o de que uma investigação não vira loop de escrever código. Rode com `claude plugin eval` (custa tokens: cada caso é uma execução de modelo). `claude plugin validate .` faz a checagem estática de schema, sem custo.
 
 São 15 casos, cada um construído a partir de um payload real de `PostToolUse` capturado na
 CLI, com o miolo (`subagent_type` e o texto de retorno do `dev`) trocado por cenário.

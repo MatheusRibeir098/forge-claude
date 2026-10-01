@@ -8,9 +8,9 @@ Este é o passo a passo prático. Para entender *por que* a ferramenta é assim,
 Dentro do Claude Code:
 
 ```
-/plugin marketplace add datisolucoesemti/dati-forge-plugin
-/plugin install forge@forge
-/plugin install forge-frontend@forge     # só se você trabalha com interface
+/plugin marketplace add MatheusRibeir098/forge-claude
+/plugin install forge@forge-claude
+/plugin install forge-frontend@forge-claude     # só se você trabalha com interface
 ```
 
 O `forge-frontend` traz 10 skills de UI (React, Tailwind, responsividade, dark mode…). Quem
@@ -25,20 +25,20 @@ trabalha com MCP, CLI, dados ou infraestrutura não precisa — e não paga o co
 Ele diagnostica, **mostra o que pretende gravar** e só escreve depois que você confirmar.
 Grava duas coisas que não viajam dentro de um plugin:
 
-- as `permissions` em `.claude/settings.json` — inclusive o `deny` que impede `cdk deploy`,
-  `terraform apply` e comando `aws` destrutivo;
+- as `permissions` em `.claude/settings.json` — inclusive o `deny` que impede `git push`,
+  `docker push` e deploy por iniciativa própria de um agente;
 - os invariantes no `CLAUDE.md`, entre marcadores, para rodar de novo atualizar em vez de
   duplicar.
 
 Se você ainda não tem uma **fábrica** (uma pasta base onde seus projetos moram), ele oferece
-criar. E oferece instalar o `rtk`, que é opcional.
+criar. Oferece instalar o `rtk`, que é opcional. E **pergunta** se você quer criar um mapa
+local de credenciais (veja a seção 6).
 
 ```
 /forge:doctor
 ```
 
-Confere se está tudo de pé: contexto detectado, permissions, invariantes, hooks, `rtk`, o
-guardrail de AWS e se o `tester` enxerga o navegador. Só lê — não altera nada.
+Confere se está tudo de pé: contexto detectado, permissions, invariantes, hooks, `rtk` e se o `tester` enxerga o navegador. Só lê — não altera nada.
 
 ## 3. Os dois jeitos de trabalhar
 
@@ -53,7 +53,7 @@ O hook detecta sozinho: se a raiz tem `projects/` e `templates/prompt.template.m
 
 > ⚠️ Na fábrica, abra a sessão **sempre na raiz da base**. Nunca abra direto dentro de
 > `projects/<nome>/` — é um repositório git separado, sem o `CLAUDE.md` da fábrica, e a
-> rede de segurança do Forge (bloqueio de código, guardrail de AWS, teto de turnos) não tem
+> rede de segurança do Forge (bloqueio de código, teto de turnos) não tem
 > garantia de valer ali. Precisa mexer num projeto? Peça ao orquestrador rodando na raiz.
 
 ## 4. Os três fluxos
@@ -89,7 +89,7 @@ dele), transforma em tarefas e entra no mesmo loop.
 
 ### Fluxo 3 — investigar (não termina em código)
 
-> *"A Lambda `process-payment-webhook` começou a falhar ontem à noite. O que aconteceu?"*
+> *"O job `sync-pagamentos` começou a falhar ontem à noite. O que aconteceu?"*
 
 Este é **read-only**. O `scout` é o protagonista, a entrega é um relatório em
 `.forge/investigacao-<data>.md`, e só vira trabalho de código se você pedir **depois** de ler
@@ -109,23 +109,18 @@ banco.
 - **Loop Travado:** o mesmo erro três vezes → ele reformula; se persistir, **para e te
   pergunta** em vez de insistir.
 
-## 6. Trabalhando com AWS
+## 6. Credenciais e ambientes
 
-Antes do primeiro comando que toca uma conta, o Forge confirma **onde está**
-(`aws sts get-caller-identity`) e te diz conta, perfil e região. Se for produção, ele fala
-isso em voz alta.
+Ao rodar `/forge:setup`, o Forge **pergunta** se você quer um mapa local de credenciais em
+`~/.claude/skills/credenciais-ambiente/SKILL.md`. É opcional, e fica só na sua máquina. Ele
+serve para o agente saber **qual conta usar**: perfis de nuvem de qualquer provedor, contas do
+`gh`, tokens de API e service accounts.
 
-Três camadas de proteção, e vale saber que existem:
+Regra do mapa: **só ponteiros, nunca o segredo.** Escreva o nome do perfil, a variável de
+ambiente ou o caminho do arquivo de credencial, e nunca o valor da chave ou do token.
 
-| | |
-|---|---|
-| leitura (`describe-*`, `list-*`, `get-*`) | livre |
-| mutação reversível (`create-*`, `update-*`) | pede confirmação |
-| destrutivo (`delete-*`, `s3 rm`, `terminate-*`, e tudo que altera IAM) | **bloqueado** — ele descreve a ação e devolve para você executar |
-
-O bloqueio é um hook que lê o comando de verdade: `aws --profile prod s3 rm` é barrado mesmo
-com a flag antes do serviço, e a mensagem cita o profile para você ver em qual conta quase
-mexeu.
+Quanto a ações irreversíveis, a regra é uma só: **nunca `git push` nem deploy sem ordem
+explícita sua.** O agente descreve a ação e devolve para você executar.
 
 ## 7. Custo — o que você controla
 
@@ -153,7 +148,7 @@ Compare com `docs/linha-de-base.md`.
 | sintoma | o que é |
 |---|---|
 | o `tester` diz que não enxerga o navegador | rode `/forge:doctor`, que diagnostica e diz a correção |
-| um comando AWS foi recusado | é o guardrail. Ele descreve a ação: execute você mesmo se for mesmo o que você quer |
+| um push ou deploy foi recusado | é a regra de ação irreversível. Ele descreve a ação: execute você mesmo se for mesmo o que você quer |
 | ele parou e perguntou | Loop Travado — três tentativas no mesmo erro. Responda com a informação que falta |
 | prompt de permissão em todo comando | faltou `/forge:setup` neste repositório |
 | o `tester` nunca é invocado | verifique se a tarefa tem interface ou superfície verificável; tarefa de refactor puro não precisa |
