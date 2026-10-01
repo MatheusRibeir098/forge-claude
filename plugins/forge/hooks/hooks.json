@@ -28,15 +28,6 @@
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/rtk-root.sh\""
           }
         ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/deny-aws-destrutivo.py\""
-          }
-        ]
       }
     ],
     "PostToolUse": [

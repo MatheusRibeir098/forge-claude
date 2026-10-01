@@ -51,7 +51,7 @@ payload=$(cat)
 # rtk é opcional: usa $FORGE_RTK_BIN se definido, senão procura `rtk` no PATH, senão
 # degrada em silêncio (RTK_BIN fica vazio e a delegação lá embaixo simplesmente não roda —
 # nunca imprime erro nem bloqueia por falta do binário). Sem caminho absoluto de máquina:
-# a máquina de outra pessoa da Dati pode não ter o rtk instalado.
+# outra máquina pode não ter o rtk instalado.
 RTK_BIN="${FORGE_RTK_BIN:-$(command -v rtk 2>/dev/null || true)}"
 
 # Estado dos contadores de turno: fora do repo de quem instalou o plugin (senão sujaria o

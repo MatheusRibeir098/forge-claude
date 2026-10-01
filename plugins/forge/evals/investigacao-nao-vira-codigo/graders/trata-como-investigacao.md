@@ -6,7 +6,7 @@ target: last_message
 min: 1
 ---
 
-A skill `investigacao-incidente-aws` manda separar, no relatório final, o que é evidência
+Uma investigação de incidente bem feita separa, no relatório final, o que é evidência
 (logs/eventos com timestamp) do que é hipótese (explicação plausível, não provada). Exigir as
 duas palavras na resposta final é um proxy de que o agente tratou isso como investigação
 estruturada — timeline e causa correlacionada — em vez de só declarar "encontrei o bug" e

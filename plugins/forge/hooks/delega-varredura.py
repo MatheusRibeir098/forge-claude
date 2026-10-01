@@ -51,31 +51,7 @@ ESTE HOOK NUNCA BLOQUEIA. Só injeta `additionalContext` — jamais `permissionD
 Payload ilegível, sem `tool_name`, ou qualquer erro inesperado: `exit 0` calado. Um hook de
 lembrete não pode ser o motivo de uma tarefa travar.
 
-SEGUNDO CONTADOR, SÓ PARA `aws` CLI DENTRO DE `Bash` — LIMIAR NÃO MEDIDO
-Investigação de incidente feita direto na sessão-raiz com `aws stepfunctions
-get-execution-history`, `aws logs filter-log-events`, `aws ... describe-*` etc. incha o
-contexto MUITO mais rápido do que leitura genérica: o retorno de um `get-execution-history`
-ou `filter-log-events` de verdade costuma ser bem maior que um `Read` de arquivo comum. Por
-isso existe um segundo contador, mais sensível, só para chamadas `Bash` cujo comando contenha
-ao menos uma invocação `aws` reconhecida (usa `encontrar_invocacoes` de
-`deny-aws-destrutivo.py` por import — não duplica o parsing de shell). Ao atingir o limiar,
-a mensagem aponta para a skill `investigacao-incidente-aws` e para despachar um `scout` com o
-recurso/ARN, a janela de tempo e a pergunta — em vez de continuar puxando log cru para o
-contexto da sessão principal.
-
-O LIMIAR PADRÃO (3) NÃO FOI MEDIDO como o geral (8) foi — é uma estimativa inicial baseada só
-no tamanho típico de retorno dessas chamadas `aws` de investigação ser bem maior que o de uma
-leitura comum. Ajustável por `FORGE_AWS_LIMIAR`; vale medir de verdade mais adiante do mesmo
-jeito que foi feito para o limiar geral.
-
-Contagem do contador `aws`: só incrementa em chamada `Bash` cujo comando tenha invocação
-`aws` reconhecida. Uma chamada `Bash` sem `aws` (ex.: `git log`) NÃO incrementa o contador
-`aws`, mas também não o zera — quem zera os dois é o mesmo gatilho que já zera o geral
-(qualquer ferramenta fora de `FERRAMENTAS_DE_LEITURA`). Se os dois limiares baterem no mesmo
-turno, a mensagem AWS tem prioridade e ambos os contadores são zerados juntos (mesmo
-cooldown que o hook já aplica ao geral).
 """
-import importlib.util
 import json
 import os
 import re
@@ -91,24 +67,6 @@ FERRAMENTAS_DE_LEITURA = frozenset({
 RE_SESSAO_INVALIDA = re.compile(r"[^A-Za-z0-9_-]")
 
 NOME_ARQUIVO_CONTADOR = "consecutivas"
-NOME_ARQUIVO_CONTADOR_AWS = "consecutivas-aws"
-
-
-def _carregar_encontrar_invocacoes():
-    """Importa `encontrar_invocacoes` de `deny-aws-destrutivo.py` (hífen no nome impede
-    `import` direto). Qualquer falha aqui não pode derrubar este hook — devolve None e o
-    contador `aws` simplesmente não incrementa neste turno."""
-    try:
-        caminho = pathlib.Path(__file__).resolve().parent / "deny-aws-destrutivo.py"
-        spec = importlib.util.spec_from_file_location("deny_aws_destrutivo", caminho)
-        modulo = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(modulo)
-        return modulo.encontrar_invocacoes
-    except Exception:
-        return None
-
-
-_ENCONTRAR_INVOCACOES = _carregar_encontrar_invocacoes()
 
 
 def _env_int(nome: str, padrao: int) -> int:
@@ -162,33 +120,6 @@ def _mensagem(n: int, limiar: int) -> str:
     )
 
 
-def _mensagem_aws(n: int, limiar: int) -> str:
-    return (
-        f"[investigação AWS na sessão principal] {n} comandos `aws` CLI seguidos "
-        "(get-execution-history, filter-log-events, describe-*...) — esse tipo de retorno é "
-        "bem maior que uma leitura comum e enche o SEU contexto rápido. Existe a skill "
-        "`investigacao-incidente-aws` pra isso, e o papel principal é o `scout`: monte um "
-        "briefing com o recurso/ARN, a janela de tempo e a pergunta, nomeie a skill "
-        "`investigacao-incidente-aws` no briefing e despache um ou mais `scout` — o retorno "
-        "já vem como evidência/hipótese, sem o log inteiro. Considere delegar em vez de "
-        f"continuar investigando aqui — este aviso dispara a partir de {limiar} comandos "
-        "`aws` seguidos."
-    )
-
-
-def _e_invocacao_aws(tool_name: str, payload: dict) -> bool:
-    """True se esta chamada `Bash` contém ao menos uma invocação `aws` reconhecida."""
-    if tool_name != "Bash" or _ENCONTRAR_INVOCACOES is None:
-        return False
-    comando = (payload.get("tool_input") or {}).get("command")
-    if not isinstance(comando, str) or not comando.strip():
-        return False
-    try:
-        return bool(_ENCONTRAR_INVOCACOES(comando))
-    except Exception:
-        return False
-
-
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -220,36 +151,18 @@ def main() -> int:
         return 0  # não conseguimos manter estado: não bloqueia nada
 
     contador = estado / NOME_ARQUIVO_CONTADOR
-    contador_aws = estado / NOME_ARQUIVO_CONTADOR_AWS
 
     if tool_name not in FERRAMENTAS_DE_LEITURA:
-        # Edit, Write, Agent, Task ou qualquer outra ferramenta: corrida quebrada (as duas).
+        # Edit, Write, Agent, Task ou qualquer outra ferramenta: corrida quebrada.
         _gravar_contador(contador, 0)
-        _gravar_contador(contador_aws, 0)
         return 0
 
     limiar = _env_int("FORGE_LEITURA_LIMIAR", 8)
-    limiar_aws = _env_int("FORGE_AWS_LIMIAR", 3)
-
     n = _ler_contador(contador) + 1
-    e_aws = _e_invocacao_aws(tool_name, payload)
-    n_aws = _ler_contador(contador_aws) + 1 if e_aws else _ler_contador(contador_aws)
-
-    if e_aws and n_aws >= limiar_aws:
-        # Prioridade: mensagem AWS-específica, zera os dois contadores (cooldown).
-        _gravar_contador(contador, 0)
-        _gravar_contador(contador_aws, 0)
-        print(json.dumps({"hookSpecificOutput": {
-            "hookEventName": "PostToolUse",
-            "additionalContext": _mensagem_aws(n_aws, limiar_aws),
-        }}))
-        return 0
 
     if n >= limiar:
-        # Limiar geral atingido: injeta o lembrete genérico e zera só o contador geral.
+        # Limiar atingido: injeta o lembrete e zera o contador (cooldown).
         _gravar_contador(contador, 0)
-        if e_aws:
-            _gravar_contador(contador_aws, n_aws)
         print(json.dumps({"hookSpecificOutput": {
             "hookEventName": "PostToolUse",
             "additionalContext": _mensagem(n, limiar),
@@ -257,8 +170,6 @@ def main() -> int:
         return 0
 
     _gravar_contador(contador, n)
-    if e_aws:
-        _gravar_contador(contador_aws, n_aws)
     return 0
 
 

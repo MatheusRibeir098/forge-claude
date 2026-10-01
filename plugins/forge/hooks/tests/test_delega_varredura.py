@@ -45,7 +45,7 @@ def payload(tool_name=None, session_id="sessao-teste", agent_id=None, **extra):
     return d
 
 
-def roda(entrada, tmp_base, limiar=None, limiar_aws=None):
+def roda(entrada, tmp_base, limiar=None):
     """Executa o hook com TMPDIR apontando para `tmp_base` (isola o contador). Devolve
     (returncode, stdout, additionalContext ou None)."""
     env = dict(os.environ)
@@ -56,10 +56,6 @@ def roda(entrada, tmp_base, limiar=None, limiar_aws=None):
         env["FORGE_LEITURA_LIMIAR"] = str(limiar)
     else:
         env.pop("FORGE_LEITURA_LIMIAR", None)
-    if limiar_aws is not None:
-        env["FORGE_AWS_LIMIAR"] = str(limiar_aws)
-    else:
-        env.pop("FORGE_AWS_LIMIAR", None)
 
     bruto = entrada if isinstance(entrada, str) else json.dumps(entrada, ensure_ascii=False)
     p = subprocess.run([sys.executable, HOOK], input=bruto, capture_output=True, text=True,
@@ -86,16 +82,6 @@ class Sandbox:
 
 def ler(tmp_base, tool_name="Read", session_id="sessao-teste", limiar=None):
     return roda(payload(tool_name=tool_name, session_id=session_id), tmp_base, limiar=limiar)
-
-
-def bash(tmp_base, command, session_id="sessao-teste", limiar=None, limiar_aws=None,
-         agent_id=None):
-    """Executa o hook simulando uma chamada `Bash` com o `command` dado."""
-    return roda(
-        payload(tool_name="Bash", session_id=session_id, agent_id=agent_id,
-                tool_input={"command": command}),
-        tmp_base, limiar=limiar, limiar_aws=limiar_aws,
-    )
 
 
 # --------------------------------------------------------------------------- casos
@@ -209,90 +195,6 @@ def _h():
         rc, out, _ = roda({"tool_name": "", "session_id": "vazio"}, tmp)  # tool_name vazio
         ok(rc == 0, f"exit {rc} com tool_name vazio")
         ok(out.strip() == "", f"tool_name vazio não deveria gerar saída: {out!r}")
-
-
-@caso("(i) 3 comandos `aws` seguidos disparam a mensagem AWS-específica")
-def _i():
-    with Sandbox() as tmp:
-        _, _, ctx1 = bash(tmp, "aws stepfunctions get-execution-history --execution-arn x")
-        ok(ctx1 is None, "1º comando aws não deveria disparar ainda")
-        _, _, ctx2 = bash(tmp, "aws logs filter-log-events --log-group-name x")
-        ok(ctx2 is None, "2º comando aws não deveria disparar ainda")
-        _, _, ctx3 = bash(tmp, "aws states describe-execution --execution-arn x")
-        ok(ctx3 is not None, "3º comando aws deveria disparar a mensagem AWS")
-        ok("scout" in ctx3, f"mensagem AWS deveria citar o scout: {ctx3!r}")
-        ok("investigacao-incidente-aws" in ctx3,
-           f"mensagem AWS deveria citar a skill: {ctx3!r}")
-
-
-@caso("(j) 2 comandos `aws` seguidos ainda não disparam (abaixo do limiar)")
-def _j():
-    with Sandbox() as tmp:
-        _, _, ctx1 = bash(tmp, "aws stepfunctions get-execution-history --execution-arn x")
-        ok(ctx1 is None, "1º comando aws não deveria disparar")
-        _, _, ctx2 = bash(tmp, "aws logs filter-log-events --log-group-name x")
-        ok(ctx2 is None, "2º comando aws não deveria disparar")
-
-
-@caso("(k) Bash não-aws no meio da sequência aws não reseta o contador aws")
-def _k():
-    with Sandbox() as tmp:
-        _, _, ctx1 = bash(tmp, "aws stepfunctions get-execution-history --execution-arn x")
-        ok(ctx1 is None, "1ª aws não deveria disparar")
-        _, _, ctx2 = bash(tmp, "aws logs filter-log-events --log-group-name x")
-        ok(ctx2 is None, "2ª aws não deveria disparar")
-        _, _, ctx3 = bash(tmp, "git status")
-        ok(ctx3 is None, "Bash não-aws no meio não deveria disparar nada")
-        _, _, ctx4 = bash(tmp, "aws states describe-execution --execution-arn x")
-        ok(ctx4 is not None,
-           "3ª aws (4ª chamada Bash no total) deveria disparar — git status não zera o aws")
-
-
-@caso("(l) Bash aws incrementa os dois contadores; 8 leituras intercaladas com aws "
-      "disparam o limiar geral sem nunca bater 3 aws seguidos")
-def _l():
-    with Sandbox() as tmp:
-        # só 2 chamadas aws no total (o contador aws NÃO zera com Read no meio, então mais
-        # de 2 aws intercaladas com Read bateria o limiar aws de 3 antes do geral de 8).
-        chamadas = [
-            lambda: bash(tmp, "aws stepfunctions get-execution-history --execution-arn x"),
-            lambda: ler(tmp),
-            lambda: bash(tmp, "aws logs filter-log-events --log-group-name x"),
-            lambda: ler(tmp),
-            lambda: ler(tmp),
-            lambda: ler(tmp),
-            lambda: ler(tmp),
-        ]
-        for i, chamada in enumerate(chamadas):
-            _, _, ctx = chamada()
-            ok(ctx is None, f"chamada {i + 1}/7 não deveria disparar nada ainda: {ctx!r}")
-        # 8ª chamada de leitura: limiar geral (8) bate, aws ficou em 2 (nunca bateu 3)
-        _, _, ctx8 = ler(tmp)
-        ok(ctx8 is not None, "8ª chamada deveria disparar o limiar geral")
-        ok("scout" in ctx8, f"mensagem geral deveria citar o scout: {ctx8!r}")
-        ok("investigacao-incidente-aws" not in ctx8,
-           f"limiar geral não deveria usar a mensagem AWS-específica: {ctx8!r}")
-
-
-@caso("(m) FORGE_AWS_LIMIAR muda o comportamento")
-def _m():
-    with Sandbox() as tmp:
-        _, _, ctx1 = bash(tmp, "aws stepfunctions get-execution-history --execution-arn x",
-                           limiar_aws=2)
-        ok(ctx1 is None, "1º comando aws não deveria disparar ainda com FORGE_AWS_LIMIAR=2")
-        _, _, ctx2 = bash(tmp, "aws logs filter-log-events --log-group-name x", limiar_aws=2)
-        ok(ctx2 is not None, "2º comando aws deveria disparar com FORGE_AWS_LIMIAR=2")
-        ok("2" in ctx2, f"mensagem AWS deveria citar o limiar customizado: {ctx2!r}")
-
-
-@caso("(n) payload com agent_id (subagente) fica em silêncio mesmo com várias aws seguidas")
-def _n():
-    with Sandbox() as tmp:
-        for i in range(5):
-            rc, out, ctx = bash(tmp, "aws stepfunctions get-execution-history --execution-arn x",
-                                 session_id="sub", agent_id="a1b2c3")
-            ok(rc == 0, f"exit {rc} na chamada aws {i} do subagente")
-            ok(out.strip() == "", f"subagente não deveria gerar lembrete: {out!r}")
 
 
 def main():

@@ -52,7 +52,7 @@ root = os.path.abspath(root)
 #
 # A exceção é estreita de propósito: só estes nomes, só na raiz. Ela NÃO enfraquece o que
 # importa — os hooks vêm do plugin (hooks/hooks.json), não do settings.json, então nada aqui
-# desliga o bloqueio de código, o teto de turnos ou o guardrail de `aws` destrutivo.
+# desliga o bloqueio de código, o teto de turnos ou os demais guardrails do Forge.
 #
 # Duas checagens, porque o /forge:setup tem dois cenários:
 #  - _exato: a raiz JÁ EXISTE (fábrica ou repo atual onde a sessão está rodando) — compara
