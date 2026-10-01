@@ -1,6 +1,6 @@
 ---
 name: setup-blocos
-description: Use no comando /forge:setup — traz o bloco canônico de permissions (allow/ask/deny) para .claude/settings.json, o bloco canônico de invariantes para o CLAUDE.md, o modelo canônico da skill de usuário credenciais-ambiente (mapa de profiles AWS, sem segredos), o algoritmo de merge que preserva o que já existe no repo ou na máquina, a receita para criar a fábrica de projetos do zero e o passo a passo para oferecer a instalação do rtk. Não sobrescreve nada sozinho.
+description: Use no comando /forge:setup — traz o bloco canônico de permissions (allow/ask/deny) para .claude/settings.json, o bloco canônico de invariantes para o CLAUDE.md, o modelo canônico da skill de usuário credenciais-ambiente (mapa local de credenciais da máquina, só ponteiros, sem segredos), o algoritmo de merge que preserva o que já existe no repo ou na máquina, a receita para criar a fábrica de projetos do zero e o passo a passo para oferecer a instalação do rtk. Não sobrescreve nada sozinho.
 ---
 
 > ⚠️ **Escreva com `Write`/`Edit`, nunca por `Bash`.** O hook do Forge libera, na raiz do
@@ -12,33 +12,26 @@ description: Use no comando /forge:setup — traz o bloco canônico de permissio
 # Setup do Forge num repositório
 
 Dois artefatos não viajam dentro de um plugin e precisam ser gravados **no repositório onde
-a pessoa vai trabalhar**: as `permissions` (allowlist de comandos + a rede de segurança que
-bloqueia deploy) e o bloco de invariantes do `CLAUDE.md` (reenviado a cada turno, já que um
+a pessoa vai trabalhar**: as `permissions` (allowlist de comandos + confirmação nas
+operações destrutivas) e o bloco de invariantes do `CLAUDE.md` (reenviado a cada turno, já que um
 plugin não injeta `CLAUDE.md`). Esta skill traz os dois blocos canônicos — extraídos do
 próprio repo de referência do Forge — e como mesclá-los sem apagar nada que o usuário já
 tenha.
 
 ## Bloco canônico de permissions
 
-Fonte: `.claude/settings.json` do repo de referência do Forge (41 `allow` / 31 `ask` / 70
-`deny`). O **`deny`** é a parte mais importante do bloco — é o que impede `cdk deploy`,
-`terraform apply`, `docker push`, `kubectl apply` etc. por iniciativa própria do agente, e
-agora também o `aws` CLI cru nas ações irreversíveis ou de blast radius alto (`aws s3 rm`,
-`delete-*` de banco/stack/função/cluster, `terminate-instances`, e qualquer mudança de
-identidade via `aws iam`/`aws organizations`). O `ask` cobre operações destrutivas ou de
-rede que exigem confirmação explícita (`git push`, `rm -r` e variantes, `killall`) e agora
-também as mutações reversíveis do `aws` CLI (`create-*`/`update-*`/`put-*`/`modify-*` em
-serviços de dado e compute, e o `create-stack`/`update-stack` do CloudFormation, que senão
-contornaria o gate do `cdk deploy`/`terraform apply`). O `allow` libera leitura, git de
+Fonte: `.claude/settings.json` do repo de referência do Forge (41 `allow` / 6 `ask` /
+`deny` vazio). O `ask` cobre operações destrutivas ou de rede que exigem confirmação
+explícita (`git push`, `rm -r` e variantes, `killall`). O `allow` libera leitura, git de
 baixo risco, gerenciadores de pacote e as variantes `rtk` (opcional — só fazem sentido se
-`rtk` estiver no `PATH`); não foi alterado — leitura de `aws` CLI (`describe-*`, `list-*`,
-`get-*`) já passava livre e continua passando.
+`rtk` estiver no `PATH`). O `deny` vem vazio de propósito: a regra de **não fazer deploy nem
+`push` por conta própria** é genérica e vive no invariante 2 do `CLAUDE.md` (skill
+`no-deploy-no-push`), não numa lista de comandos de um provedor específico. Quem quiser
+bloquear comandos próprios do seu stack adiciona as regras em `deny` — o algoritmo de merge
+abaixo nunca remove o que já está lá.
 
-**Por que `deny` e não só `ask` no que é irreversível**: `ask` depende de alguém ler o
-prompt de confirmação e dizer não — um só "sim" apressado (ou um agente que interpreta
-contexto ambíguo como autorização) já executa. Para o que não tem volta (deletar um bucket,
-terminar uma instância, apagar uma stack), a ferramenta não deve nem oferecer a opção; por
-isso vai para `deny`, que bloqueia sem perguntar.
+**Por que `ask` e não `allow` no que é destrutivo**: `git push` e `rm -r` não têm volta
+fácil; a ferramenta precisa parar e pedir confirmação em vez de executar sozinha.
 
 ```json
 {
@@ -93,125 +86,17 @@ isso vai para `deny`, que bloqueia sem perguntar.
       "Bash(rm -r:*)",
       "Bash(rm -R:*)",
       "Bash(rm -fr:*)",
-      "Bash(rm -fR:*)",
-      "Bash(aws s3api create-bucket:*)",
-      "Bash(aws s3api put-bucket-policy:*)",
-      "Bash(aws s3api put-bucket-acl:*)",
-      "Bash(aws rds create-db-instance:*)",
-      "Bash(aws rds create-db-cluster:*)",
-      "Bash(aws rds modify-db-instance:*)",
-      "Bash(aws rds modify-db-cluster:*)",
-      "Bash(aws dynamodb create-table:*)",
-      "Bash(aws dynamodb update-table:*)",
-      "Bash(aws cloudformation create-stack:*)",
-      "Bash(aws cloudformation update-stack:*)",
-      "Bash(aws cloudformation create-change-set:*)",
-      "Bash(aws cloudformation execute-change-set:*)",
-      "Bash(aws lambda create-function:*)",
-      "Bash(aws lambda update-function-code:*)",
-      "Bash(aws lambda update-function-configuration:*)",
-      "Bash(aws ecs create-cluster:*)",
-      "Bash(aws ecs create-service:*)",
-      "Bash(aws ecs update-service:*)",
-      "Bash(aws eks create-cluster:*)",
-      "Bash(aws eks create-nodegroup:*)",
-      "Bash(aws eks update-nodegroup-config:*)",
-      "Bash(aws ec2 run-instances:*)",
-      "Bash(aws ec2 create-vpc:*)",
-      "Bash(aws ec2 stop-instances:*)"
+      "Bash(rm -fR:*)"
     ],
-    "deny": [
-      "Bash(cdk deploy:*)",
-      "Bash(cdk destroy:*)",
-      "Bash(terraform apply:*)",
-      "Bash(terraform destroy:*)",
-      "Bash(serverless deploy:*)",
-      "Bash(sam deploy:*)",
-      "Bash(docker push:*)",
-      "Bash(kubectl apply:*)",
-      "Bash(aws s3 rm:*)",
-      "Bash(aws s3 rb:*)",
-      "Bash(aws s3api delete-bucket:*)",
-      "Bash(aws s3api delete-object:*)",
-      "Bash(aws s3api delete-objects:*)",
-      "Bash(aws rds delete-db-instance:*)",
-      "Bash(aws rds delete-db-cluster:*)",
-      "Bash(aws rds delete-db-snapshot:*)",
-      "Bash(aws rds delete-db-cluster-snapshot:*)",
-      "Bash(aws dynamodb delete-table:*)",
-      "Bash(aws dynamodb delete-backup:*)",
-      "Bash(aws cloudformation delete-stack:*)",
-      "Bash(aws cloudformation delete-stack-set:*)",
-      "Bash(aws cloudformation delete-stack-instances:*)",
-      "Bash(aws lambda delete-function:*)",
-      "Bash(aws lambda delete-layer-version:*)",
-      "Bash(aws ecs delete-cluster:*)",
-      "Bash(aws ecs delete-service:*)",
-      "Bash(aws eks delete-cluster:*)",
-      "Bash(aws eks delete-nodegroup:*)",
-      "Bash(aws ec2 terminate-instances:*)",
-      "Bash(aws kms schedule-key-deletion:*)",
-      "Bash(aws secretsmanager delete-secret:*)",
-      "Bash(aws iam create-user:*)",
-      "Bash(aws iam delete-user:*)",
-      "Bash(aws iam create-role:*)",
-      "Bash(aws iam delete-role:*)",
-      "Bash(aws iam update-assume-role-policy:*)",
-      "Bash(aws iam create-policy:*)",
-      "Bash(aws iam delete-policy:*)",
-      "Bash(aws iam create-policy-version:*)",
-      "Bash(aws iam delete-policy-version:*)",
-      "Bash(aws iam attach-role-policy:*)",
-      "Bash(aws iam detach-role-policy:*)",
-      "Bash(aws iam attach-user-policy:*)",
-      "Bash(aws iam detach-user-policy:*)",
-      "Bash(aws iam attach-group-policy:*)",
-      "Bash(aws iam detach-group-policy:*)",
-      "Bash(aws iam put-role-policy:*)",
-      "Bash(aws iam put-user-policy:*)",
-      "Bash(aws iam put-group-policy:*)",
-      "Bash(aws iam create-access-key:*)",
-      "Bash(aws iam delete-access-key:*)",
-      "Bash(aws iam update-access-key:*)",
-      "Bash(aws iam create-login-profile:*)",
-      "Bash(aws iam delete-login-profile:*)",
-      "Bash(aws iam update-login-profile:*)",
-      "Bash(aws iam add-user-to-group:*)",
-      "Bash(aws iam remove-user-from-group:*)",
-      "Bash(aws iam deactivate-mfa-device:*)",
-      "Bash(aws iam delete-virtual-mfa-device:*)",
-      "Bash(aws organizations create-account:*)",
-      "Bash(aws organizations close-account:*)",
-      "Bash(aws organizations remove-account-from-organization:*)",
-      "Bash(aws organizations invite-account-to-organization:*)",
-      "Bash(aws organizations leave-organization:*)",
-      "Bash(aws organizations create-policy:*)",
-      "Bash(aws organizations delete-policy:*)",
-      "Bash(aws organizations update-policy:*)",
-      "Bash(aws organizations attach-policy:*)",
-      "Bash(aws organizations detach-policy:*)",
-      "Bash(aws organizations move-account:*)"
-    ]
+    "deny": []
   }
 }
 ```
 
-O `Bash(...)` só casa **prefixo exato + `:*`** — não existe glob no meio do comando. Por
-isso as entradas de `aws iam`/`aws organizations` acima listam ação por ação (`create-role`,
-`attach-role-policy`, ...) em vez de tentar um padrão único: cobrem as mutações mais comuns e
-de maior blast radius, não literalmente toda ação da API. Isso é rede de segurança, não a
-única camada — a skill `aws-operacoes-seguras` é quem cobre o resto (confirmar conta/perfil
-antes de agir, nunca supor `default`, tratar qualquer comando fora do `allow` com o mesmo
-cuidado mesmo que a lista não tenha previsto a ação exata).
-
-**O prefixo literal tem um furo mensurável**: qualquer flag global do `aws` antes do serviço
-(`aws --profile prod s3 rm ...`, `aws --region us-east-1 iam delete-role ...`) muda o começo
-da string e escapa do `deny` — mesmo sendo exatamente a forma usada quando alguém aponta pra
-produção. Quem fecha esse furo é o hook `PreToolUse` `deny-aws-destrutivo`: ele lê
-`tool_input.command`, acha toda invocação do `aws` (direta, encadeada ou dentro de
-`bash -c`), ignora as flags globais e decide pelo serviço + operação de verdade. A lista de
-`permissions` continua valendo como primeira camada (mais rápida, cobre o resto do
-ecossistema de infra); o hook é a segunda, específica para o `aws` CLI.
+O `Bash(...)` só casa **prefixo exato + `:*`** — não existe glob no meio do comando. Por isso
+as regras são rede de segurança, não a única camada: flags ou encadeamentos antes do comando
+mudam o começo da string e escapam do prefixo. O que cobre o resto é o comportamento descrito
+nas skills do plugin (`no-deploy-no-push`, `safe-operations`) e os hooks.
 
 ### Algoritmo de merge para `.claude/settings.json`
 
@@ -244,9 +129,9 @@ propósito, porque é reenviado a cada turno. O detalhe de cada um vive nas skil
 
 1. **Não escreva código de produto** — delegue ao subagente `dev`; um hook bloqueia por
    caminho.
-2. **Nunca `push` ou deploy por conta própria** (`git push`, `cdk deploy/destroy`,
-   `terraform apply/destroy`, `serverless deploy`, `sam deploy`, `docker push`,
-   `kubectl apply`) — só sob ordem explícita do usuário. Skill `no-deploy-no-push`.
+2. **Nunca `git push` nem deploy de qualquer tipo** (infra, container, serverless, cloud)
+   por conta própria — só sob ordem explícita do usuário; antes de aplicar infra, mostre o
+   diff/plano e aguarde. Skill `no-deploy-no-push`.
 3. **Commits em português do Brasil** (prefixos convencionais em inglês são ok: `feat:`,
    `fix:`...).
 4. **Segurança de processos e do sistema**: confira processos ativos antes de matar/reiniciar;
@@ -312,81 +197,101 @@ item 6.
 
 ## Modelo canônico da skill `credenciais-ambiente`
 
-A skill `aws-operacoes-seguras` do plugin é regra de comportamento ("confirme a conta antes
-de agir") e vale para qualquer instalação. Mas o **mapa de profiles AWS** — qual é produção,
-qual é administrador — é diferente em cada máquina e **não pode** ir dentro do plugin:
-distribuir o mapa de uma pessoa para o time seria pior que inútil, seria enganoso. Por isso
-ele é gravado como skill do **usuário**, em `~/.claude/skills/credenciais-ambiente/SKILL.md`
-— fora do repositório, valendo em qualquer projeto que essa pessoa abrir.
+O **mapa de credenciais** — quais perfis de nuvem, contas e tokens existem nesta máquina,
+para que serve cada um e qual é produção — é diferente em cada máquina e **não pode** ir
+dentro do plugin: distribuir o mapa de uma pessoa para outras seria pior que inútil, seria
+enganoso. Por isso ele é **opcional** e é gravado como skill do **usuário**, em
+`~/.claude/skills/credenciais-ambiente/SKILL.md` — fora do repositório, valendo em qualquer
+projeto que essa pessoa abrir.
 
-### Descobrir os profiles
+É um mapa de **ponteiros**, não um cofre: diz *onde* a credencial vive e *como* confirmar que
+está ativa, nunca o valor dela. Não assuma provedor nenhum — o usuário diz o que quer mapear.
 
-Leia **somente** `~/.aws/config`. ⚠️ **Nunca leia `~/.aws/credentials`** — é lá que ficam as
-chaves de verdade, e nada dele entra na skill gerada. De cada bloco `[profile <nome>]` (ou
-`[default]`), aproveite só:
+### Perguntar antes de tudo
 
-- nome do profile;
-- `region`;
-- `sso_start_url`, `sso_account_id`, `sso_role_name` (perfis SSO);
-- `role_arn`, `source_profile` (assume-role);
-- `output`.
+Pergunte se o usuário quer criar esse mapa. Se disser **não**, pule — nada é criado e o setup
+segue. Se disser **sim**, pergunte **o que ele quer mapear**. Exemplos para destravar a
+resposta (não são lista fechada): perfis de nuvem (AWS, GCP, Azure…), contas do `gh`, tokens
+de API (ClickUp, Notion…), service accounts, bancos de dados.
 
-Nenhum outro campo do `config` importa para o mapa.
+### Inferir o que der, sem tocar em segredo
+
+Para cada tipo que o usuário pediu, use só fontes que **não contêm o segredo em si**:
+
+- contas do GitHub: `gh auth status`;
+- perfis AWS: nomes e metadados de `~/.aws/config` (se existir) — nome do profile, `region`,
+  `sso_*`, `role_arn`, `source_profile`;
+- perfis GCP: `gcloud config configurations list`;
+- perfis Azure: `az account list --query "[].{name:name,id:id}"`;
+- outros: nada a inferir — pergunte.
+
+Rodar um comando de listagem acima só é ok se a ferramenta existir; se não existir, não é
+erro, vira pergunta ao usuário.
 
 ### Perguntar o que não dá para inferir
 
-Numa única rodada, objetiva:
+Para cada item, numa rodada objetiva:
 
-1. Qual(is) profile(s) apontam para **produção**?
-2. Qual(is) têm **acesso administrativo**?
-3. Algum é de **cliente/terceiro**?
-4. Existe algum que **não deve ser usado** por agente nenhum?
+1. Para que serve?
+2. Onde a credencial vive? (variável de ambiente `X`, arquivo `Y`, keychain, `gh auth`…)
+3. Como renovar a sessão e como confirmar que está ativa?
+4. É **produção**? Tem acesso **administrativo**? É de **cliente/terceiro**?
+5. Algum item **não deve ser usado por agente nenhum**?
 
-Não adivinhe essas respostas por nome de profile — `prd`, `prod`, `admin` no nome são pista,
-não confirmação.
+Não adivinhe produção/admin por nome — `prd`, `prod`, `admin` no nome são pista, não
+confirmação.
 
 ### Template do arquivo gerado
+
+Gere só as seções dos tipos que o usuário mapeou; omita as vazias.
 
 ````markdown
 ---
 name: credenciais-ambiente
-description: Mapa dos profiles AWS configurados nesta máquina — para que serve cada um, região, tipo de autenticação e risco (produção/administrador). Use antes de escolher um profile AWS, ou ao diagnosticar erro de credencial (ExpiredToken, AccessDenied, "sso session expired", "Unable to locate credentials"). Não contém segredos — aponta para onde eles vivem.
+description: Mapa local das credenciais e perfis desta máquina — contas de nuvem, GitHub, tokens de API, service accounts e bancos: para que serve cada um, onde a credencial vive, como confirmar que está ativa e qual é produção. Use antes de escolher um perfil/conta/token, ou ao diagnosticar erro de credencial (expired token, access denied, "session expired", "unauthorized", "unable to locate credentials"). Não contém segredos — aponta para onde eles vivem.
 ---
 
-# Profiles AWS desta máquina
+# Credenciais e perfis desta máquina
 
-Mapa de **qual profile usar para quê** — isto é um mapa, não um cofre: nenhum segredo
-(access key, secret key, session token, senha, token de API) é gravado aqui.
+Mapa de **qual credencial usar para quê** — isto é um mapa, não um cofre: nenhum segredo
+(chave, token, senha, JSON de service account) é gravado aqui.
 
-## Profiles
+## Perfis de nuvem
 
-| Profile | Para que serve | Região | Autenticação | Risco |
+| Perfil | Provedor | Para que serve | Onde a credencial vive | Como confirmar | Risco |
+|---|---|---|---|---|---|
+| `<nome>` | <provedor> | <descrição dada pelo usuário> | <env var / arquivo / SSO / keychain> | `<comando de identidade>` | — / **PRODUÇÃO** / **ADMIN** / cliente terceiro / **não usar** |
+
+## Contas do GitHub (`gh`)
+
+| Conta | Para que serve | Como confirmar | Risco |
+|---|---|---|---|
+| `<usuário>` | <descrição> | `gh auth status` | — |
+
+## Tokens de API
+
+| Serviço | Para que serve | Onde o token vive | Como renovar / confirmar | Risco |
 |---|---|---|---|---|
-| `<nome>` | <descrição dada pelo usuário> | `<region>` | chave estática / SSO + assume-role | — / **PRODUÇÃO** / **ADMIN** / cliente terceiro |
+| `<serviço>` | <descrição> | variável de ambiente `<NOME>` | <como> | — |
 
-## Renovar sessão e confirmar onde você está
+## Service accounts e bancos
 
-```bash
-aws sso login --profile <profile-sso>
-aws sts get-caller-identity --profile <profile>
-```
-
-`sts get-caller-identity` continua sendo a fonte de verdade — este mapa diz o que
-**deveria** ser, o `sts` diz o que **é**.
+| Item | Para que serve | Onde a credencial vive | Como confirmar | Risco |
+|---|---|---|---|---|
+| `<nome>` | <descrição> | arquivo `<caminho>` / variável `<NOME>` | <como> | — |
 
 ## Sem segredos aqui
 
-Este arquivo não contém `aws_access_key_id`, `aws_secret_access_key`, `aws_session_token`,
-senha nem token de API. As credenciais de verdade vivem em `~/.aws/config` (profiles e
-metadados de SSO), `~/.aws/credentials` (chaves estáticas) e no cache de sessão do SSO —
-nunca neste arquivo.
+Este arquivo não contém chaves de acesso, tokens, senhas nem conteúdo de service account. As
+credenciais de verdade vivem onde a coluna "onde a credencial vive" aponta — nunca neste
+arquivo. Os comandos de confirmação de identidade são a fonte de verdade: este mapa diz o que
+**deveria** ser, eles dizem o que **é**.
 ````
 
-Preencha a tabela com uma linha por profile encontrado em `~/.aws/config`, cruzando com as
-respostas do usuário para a coluna "Risco". Um profile marcado como "não deve ser usado por
-agente nenhum" entra na tabela do mesmo jeito, com essa observação na coluna Risco — omitir
-o profile é pior do que marcá-lo como proibido, porque um profile ausente parece apenas
-"ainda não catalogado".
+Uma linha por item mapeado, cruzando com as respostas do usuário na coluna "Risco". Um item
+marcado como "não deve ser usado por agente nenhum" entra na tabela do mesmo jeito, com essa
+observação na coluna Risco — omitir o item é pior do que marcá-lo como proibido, porque um
+item ausente parece apenas "ainda não catalogado".
 
 ### Algoritmo de merge (não sobrescrever)
 
@@ -394,19 +299,21 @@ o profile é pior do que marcá-lo como proibido, porque um profile ausente pare
    completo a partir do template acima.
 2. Se **já existir**: **nunca sobrescreva**. Diga ao usuário que o arquivo já existe e
    ofereça só **complementar**:
-   - Leia a tabela existente e extraia os nomes de profile já catalogados.
-   - Compare com os profiles encontrados em `~/.aws/config`.
-   - Pergunte ao usuário (mesma rodada de perguntas acima) só sobre os profiles que
-     **faltam** na tabela.
-   - Acrescente uma linha por profile novo à tabela existente, preservando todas as linhas
-     e qualquer anotação que já estivesse lá. Nunca remova ou reescreva uma linha existente.
-   - Se nenhum profile novo for encontrado, diga isso ao usuário e não escreva nada.
+   - Leia as tabelas existentes e extraia os nomes já catalogados.
+   - Compare com o que foi inferido ou o usuário pediu para mapear agora.
+   - Pergunte (mesma rodada de perguntas acima) só sobre os itens que **faltam**.
+   - Acrescente uma linha por item novo na tabela do tipo certo (crie a seção se o tipo
+     ainda não existir), preservando todas as linhas e anotações que já estavam lá. Nunca
+     remova ou reescreva uma linha existente.
+   - Se nenhum item novo for encontrado, diga isso ao usuário e não escreva nada.
 
 ### Proibições absolutas
 
-- **Nunca leia `~/.aws/credentials`** — só `~/.aws/config`.
-- **Nunca grave** `aws_access_key_id`, `aws_secret_access_key`, `aws_session_token`, senha,
-  token de API ou qualquer segredo na skill gerada.
+- **Nunca leia arquivos que contêm o segredo em si**: `~/.aws/credentials`, `.env` com
+  tokens, JSON de service account, arquivos de chave (`*.pem`, `id_*`), cofres de senha. Para
+  AWS, só `~/.aws/config`.
+- **Nunca grave** chave de acesso, token, senha, session token ou qualquer segredo na skill
+  gerada.
 - Se o usuário colar uma credencial na conversa (por engano ou "para facilitar"), **não
   grave**: diga que ela não vai para arquivo nenhum e siga sem ela.
 
@@ -435,7 +342,7 @@ orquestrador pode escrever) pressupõe uma pasta base já existente: raiz com `p
 usuário quer começar projetos novos em vez de só preparar o repositório onde já está.
 
 O fluxo de referência (do autor da ferramenta) é: uma única pasta base, cada repositório em
-que ele trabalha clonado para dentro dela (`projects/celk`, `projects/dati-mcps`, …), e um
+que ele trabalha clonado para dentro dela (`projects/app-web`, `projects/api-pagamentos`, …), e um
 único orquestrador rodando sempre na raiz da base — que sabe onde cada projeto está. Projeto
 novo nasce em `projects/<nome>/`, cada um com o **próprio git**; a base em si nunca é
 repositório e nunca versiona `projects/`.

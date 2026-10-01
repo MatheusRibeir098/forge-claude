@@ -18,10 +18,8 @@ Diga qual é e o que isso significa na prática para onde as coisas vão ser esc
 
 ## 2. Permissions
 
-O `.claude/settings.json` deste repositório tem o bloco do Forge? Verifique em especial:
-
-- o `deny` de deploy (`cdk deploy`, `terraform apply`, `sam deploy`, `kubectl apply`…);
-- as entradas de `aws` destrutivo (remoção de dado/recurso, e mutação de `iam`/`organizations`).
+O `.claude/settings.json` deste repositório tem o bloco do Forge? Verifique em especial o
+`ask` das operações destrutivas (`git push`, `rm -r` e variantes, `killall`).
 
 Faltando → `atenção`, e a ação é rodar `/forge:setup`. **Não** escreva nada aqui.
 
@@ -52,26 +50,12 @@ Rode as suítes do plugin, se estiverem acessíveis:
 
 ```
 python3 ${CLAUDE_PLUGIN_ROOT}/hooks/tests/test_require_tester.py
-python3 ${CLAUDE_PLUGIN_ROOT}/hooks/tests/test_deny_aws.py
 ```
 
 Reporte o resultado real. **Se não conseguir rodar, diga que não conseguiu verificar** — não
 conclua que está tudo certo por ausência de erro.
 
-## 6. Guardrail de AWS, demonstrado
-
-Mostre que o hook funciona, **sem executar nada na AWS**. Passe um payload pelo hook, que é
-inofensivo — ele só lê texto e devolve uma decisão:
-
-```
-echo '{"tool_name":"Bash","tool_input":{"command":"aws --profile prod s3 rm s3://x"}}' \
-  | python3 ${CLAUDE_PLUGIN_ROOT}/hooks/deny-aws-destrutivo.py
-```
-
-Esperado: recusa citando serviço, operação e o `--profile` usado. Repita com
-`aws s3 ls` e mostre que passa (saída vazia). **Nunca** rode o comando AWS de verdade.
-
-## 7. O `tester` enxerga o navegador?
+## 6. O `tester` enxerga o navegador?
 
 O `tester` **não declara `tools`** no frontmatter, de propósito: omitir o campo é o único
 caminho que a documentação oficial garante para um subagente herdar ferramentas MCP. Resta

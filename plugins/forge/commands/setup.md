@@ -10,8 +10,8 @@ description: Prepara o repositório atual para rodar o Forge — grava as permis
 
 Você é o **Forge**. Este comando prepara o repositório **onde o usuário está agora** (não
 necessariamente o repo de referência do Forge) para rodar o plugin. Sem isso, cada comando do
-loop pede permissão a cada passo e — mais grave — falta a rede de segurança que impede deploy
-acidental por iniciativa própria de um agente.
+loop pede permissão a cada passo e — mais grave — faltam a confirmação nas operações
+destrutivas e o invariante que impede deploy acidental por iniciativa própria de um agente.
 
 Carregue a skill `setup-blocos` antes de qualquer diagnóstico ou escrita — ela traz os blocos
 canônicos (permissions, invariantes, `.gitignore` da fábrica, modelo da skill
@@ -82,10 +82,10 @@ criar fábrica nenhuma.
 merge (skill `setup-blocos`) e mostre ao usuário só o **diff** — o que será adicionado, não o
 arquivo inteiro:
 
-- Em `settings.json`: as entradas novas de `allow`/`ask`/`deny`. Deixe explícito que o
-  **`deny` é a parte mais importante** deste bloco: é o que impede `cdk deploy`,
-  `terraform apply`, `docker push`, `kubectl apply` etc. por conta própria do agente — sem
-  ele, a única barreira contra deploy acidental desaparece.
+- Em `settings.json`: as entradas novas de `allow`/`ask`/`deny`. Deixe explícito que o `ask`
+  faz `git push` e `rm -r` pedirem confirmação, e que a regra de **nunca fazer deploy nem
+  `push` por conta própria** vive no invariante 2 do `CLAUDE.md` — por isso o bloco abaixo
+  é importante.
 - Em `CLAUDE.md`: o bloco de invariantes que será inserido (arquivo novo ou sem marcadores)
   ou atualizado (marcadores já existentes).
 
@@ -124,45 +124,50 @@ remoto. Pergunte antes de rodar. Se ele recusar, siga normalmente e diga que o F
 sem o rtk. Se aceitar e você rodar o comando, avise depois que `~/.local/bin` precisa estar no
 `PATH`, e que dá para conferir com `rtk --version`.
 
-## 6. Mapear os profiles AWS (skill `credenciais-ambiente`)
+## 6. Mapa local de credenciais (skill `credenciais-ambiente`, opcional)
 
-Mesmo padrão dos passos anteriores: **diagnostica → mostra → pergunta → só então escreve.**
+Mesmo padrão dos passos anteriores: **pergunta → diagnostica → mostra → só então escreve.**
 
-**Diagnosticar**: verifique se `~/.claude/skills/credenciais-ambiente/SKILL.md` já existe.
+**Perguntar primeiro**: "Quer criar um lugar local para mapear as credenciais gerais desta
+máquina (perfis de nuvem, contas do `gh`, tokens de API, service accounts, bancos)? Fica em
+`~/.claude/skills/credenciais-ambiente/SKILL.md`, fora do repositório, e guarda só
+**ponteiros** — nunca o segredo." Se a resposta for **não**, pule este passo e siga para o 7.
+
+**Se sim, diagnosticar**: verifique se `~/.claude/skills/credenciais-ambiente/SKILL.md` já
+existe.
 
 - Se **existir**, diga ao usuário que já existe e que você vai só **complementar** o que
   faltar — mesmo algoritmo de merge que os passos 3-4 usam para `CLAUDE.md`/
-  `settings.json`: nunca sobrescreve, só acrescenta o que ainda não está lá. Rode o
-  diagnóstico de profiles abaixo mesmo assim, para achar o que falta.
+  `settings.json`: nunca sobrescreve, só acrescenta o que ainda não está lá.
 - Se **não existir**, você vai gerar o arquivo do zero a partir do modelo canônico da skill
   `setup-blocos`.
 
-**Ler `~/.aws/config`** para descobrir os profiles. ⚠️ **Nunca leia `~/.aws/credentials`** —
-é lá que ficam as chaves de verdade. Do `config`, aproveite só: nome do profile, `region`,
-`sso_start_url`/`sso_account_id`/`sso_role_name`, `role_arn`, `source_profile`, `output`.
-Nada além disso.
+**Perguntar o que mapear**: peça ao usuário que diga o que quer catalogar (exemplos: perfis
+de nuvem de qualquer provedor, contas do `gh`, tokens de API como ClickUp ou Notion, service
+accounts, bancos). Não assuma provedor nenhum.
 
-**Mostrar** ao usuário a lista de profiles encontrados (e, se o arquivo já existir, quais já
-estão mapeados e quais faltam).
+**Inferir o que der, sem segredo**: para cada tipo pedido, use só o que não contém a
+credencial em si — `gh auth status`, `gcloud config configurations list`, nomes de profiles
+em `~/.aws/config` (se existir) e equivalentes. Ferramenta ausente não é erro: vira pergunta.
+Mostre ao usuário o que encontrou (e, se o arquivo já existir, o que já está mapeado e o que
+falta).
 
-**Perguntar**, numa única rodada e de forma objetiva — só o que não dá para inferir:
-
-1. Qual(is) profile(s) são de **produção**?
-2. Qual(is) têm **acesso administrativo**?
-3. Algum é de **cliente/terceiro**?
-4. Há algum que **não deve ser usado por agente nenhum**?
+**Perguntar o que não dá para inferir**, numa única rodada e de forma objetiva, para cada
+item: para que serve; onde a credencial vive (variável de ambiente, arquivo, keychain,
+`gh auth`); como renovar e confirmar que está ativa; se é **produção**, **administrativo**, de
+**cliente/terceiro** ou se **não deve ser usado por agente nenhum**.
 
 **Escrever** só depois da resposta: gere (ou complemente)
 `~/.claude/skills/credenciais-ambiente/SKILL.md` seguindo o template e o algoritmo de merge
 da skill `setup-blocos`. É uma skill do **usuário**, não do repositório — vale em qualquer
-projeto, porque os profiles são da máquina, não deste repo.
+projeto, porque as credenciais são da máquina, não deste repo.
 
 ⚠️ **Proibições absolutas:**
 
-- **Nunca leia** `~/.aws/credentials` — só `~/.aws/config`.
-- **Nunca grave** `aws_access_key_id`, `aws_secret_access_key`, `aws_session_token`, senha,
-  token de API ou qualquer segredo no arquivo gerado. A skill gerada é um **mapa que aponta
-  onde as coisas estão**, não um cofre.
+- **Nunca leia** arquivos que contêm o segredo em si: `~/.aws/credentials`, `.env` com
+  tokens, JSON de service account, arquivos de chave.
+- **Nunca grave** chave, token, senha ou qualquer segredo no arquivo gerado. A skill gerada é
+  um **mapa que aponta onde as coisas estão**, não um cofre.
 - Se o usuário oferecer uma credencial durante a conversa, **não grave**: diga que ela não
   vai para arquivo nenhum.
 
@@ -170,8 +175,8 @@ projeto, porque os profiles são da máquina, não deste repo.
 
 Resuma em lista curta o que foi gravado (fábrica criada ou não, permissions/CLAUDE.md
 atualizados ou já corretos, rtk instalado/recusado/já presente e se está confirmado no
-`PATH` — rode `rtk --version` se acabou de instalar, não presuma, profiles AWS
-mapeados/complementados/já completos). Se algum pré-requisito de ambiente (`git`/`node`/
+`PATH` — rode `rtk --version` se acabou de instalar, não presuma, mapa de credenciais
+criado/complementado/já completo/recusado). Se algum pré-requisito de ambiente (`git`/`node`/
 `pnpm`) faltou no diagnóstico do passo 1, repita o aviso aqui — é a última chance de a pessoa
 ver isso antes de sair usando o Forge.
 
