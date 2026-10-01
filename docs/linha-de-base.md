@@ -1,7 +1,7 @@
 # Linha de base — consumo medido antes das mudanças
 
-Medição feita com `plugins/forge/bin/forge-tokens`, sobre os transcripts reais do
-repositório de origem (`forge-claude`). Serve de régua para comparar depois que o plugin
+Medição feita com `plugins/forge/bin/forge-tokens`, sobre os transcripts reais da
+fábrica de onde este plugin foi extraído (a pasta de trabalho do autor). Serve de régua para comparar depois que o plugin
 estiver em uso.
 
 ```

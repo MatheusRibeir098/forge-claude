@@ -25,10 +25,10 @@ trabalha com MCP, CLI, dados ou infraestrutura não precisa — e não paga o co
 Ele diagnostica, **mostra o que pretende gravar** e só escreve depois que você confirmar.
 Grava duas coisas que não viajam dentro de um plugin:
 
-- as `permissions` em `.claude/settings.json` — inclusive o `deny` que impede `git push`,
-  `docker push` e deploy por iniciativa própria de um agente;
+- as `permissions` em `.claude/settings.json`: `allow` para leitura e ferramentas de baixo
+  risco, `ask` para `git push` e `rm -r` (pedem confirmação) e `deny` para `git push` forçado;
 - os invariantes no `CLAUDE.md`, entre marcadores, para rodar de novo atualizar em vez de
-  duplicar.
+  duplicar. É ali que vive a regra de nunca fazer deploy nem `push` por iniciativa própria.
 
 Se você ainda não tem uma **fábrica** (uma pasta base onde seus projetos moram), ele oferece
 criar. Oferece instalar o `rtk`, que é opcional. E **pergunta** se você quer criar um mapa
@@ -68,12 +68,13 @@ O hook detecta sozinho: se a raiz tem `projects/` e `templates/prompt.template.m
 3. 🔎 Investigar/Analisar — incidente, banco, custo, infraestrutura
 ```
 
-Você pode pular o menu descrevendo direto o que quer.
+Você pode pular o menu descrevendo direto o que quer, ou usar os atalhos `/forge:new <ideia>`
+(fluxo 1) e `/forge:fix <projeto + pedido>` (fluxo 2).
 
 ### Fluxo 1 — criar do zero
 
-> *"Quero um painel interno que mostre os chamados abertos do Tiflux por técnico, com filtro
-> por período."*
+> *"Quero um painel interno que mostre os chamados abertos por técnico, lendo de uma API
+> REST, com filtro por período."*
 
 O Forge faz perguntas (no máximo quatro rodadas), escreve a spec em `prompt.md`, **mostra
 para você confirmar**, monta o backlog em `.forge/tasks.md` e começa a despachar `dev` em
@@ -112,9 +113,13 @@ banco.
 ## 6. Credenciais e ambientes
 
 Ao rodar `/forge:setup`, o Forge **pergunta** se você quer um mapa local de credenciais em
-`~/.claude/skills/credenciais-ambiente/SKILL.md`. É opcional, e fica só na sua máquina. Ele
-serve para o agente saber **qual conta usar**: perfis de nuvem de qualquer provedor, contas do
-`gh`, tokens de API e service accounts.
+`~/.claude/skills/credenciais-ambiente/SKILL.md`. É opcional, e fica só na sua máquina, fora
+do repositório. Se você disser não, o passo é pulado. Se disser sim, ele pergunta o que você
+quer catalogar, infere o que der sem tocar em segredo (por exemplo, `gh auth status`), e
+pergunta o resto: para que serve cada item, onde a credencial vive, como renovar e se é
+produção, administrativa, de terceiro ou proibida para agente. O mapa serve para o agente
+saber **qual conta usar**: perfis de nuvem de qualquer provedor, contas do `gh`, tokens de
+API, service accounts e bancos.
 
 Regra do mapa: **só ponteiros, nunca o segredo.** Escreva o nome do perfil, a variável de
 ambiente ou o caminho do arquivo de credencial, e nunca o valor da chave ou do token.
@@ -135,10 +140,11 @@ cada turno. Três coisas que ajudam de verdade:
    Regra prática: **no começo de uma sessão longa, delegue; perto do fim, leia direto.**
 3. **Sessão nova para assunto novo.** Contexto acumulado é o que encarece — e ele não diminui.
 
-Para medir o seu próprio uso:
+Para medir o seu próprio uso, no repositório onde o Forge foi usado (o script fica em
+`plugins/forge/bin/forge-tokens` neste marketplace):
 
 ```
-plugins/forge/bin/forge-tokens --desde AAAA-MM-DD
+forge-tokens --desde AAAA-MM-DD
 ```
 
 Compare com `docs/linha-de-base.md`.
@@ -152,3 +158,18 @@ Compare com `docs/linha-de-base.md`.
 | ele parou e perguntou | Loop Travado — três tentativas no mesmo erro. Responda com a informação que falta |
 | prompt de permissão em todo comando | faltou `/forge:setup` neste repositório |
 | o `tester` nunca é invocado | verifique se a tarefa tem interface ou superfície verificável; tarefa de refactor puro não precisa |
+| o agente saiu da pasta do projeto | veja abaixo |
+
+### O agente saiu da pasta do projeto
+
+A pasta de trabalho do shell persiste entre chamadas de `Bash`. Se o orquestrador roda um
+`cd /outra/pasta` solto para ler algo e não volta, as chamadas seguintes ficam fora da raiz,
+onde as regras e os arquivos de `.claude/` da pasta base deixam de valer. O hook
+`volta-pasta-base.py` cobre isso na sessão principal: quando a pasta do shell diverge de
+`CLAUDE_PROJECT_DIR`, ele reescreve o comando como `cd "<raiz>" && <comando>` e mostra um
+aviso começando com `[pasta base]`. Não precisa fazer nada. Ele não decide permissões (isso
+continua com as `permissions`) e, se algo estranho acontecer, deixa o comando passar
+intacto. O aviso é só um lembrete para o agente usar `cd x && cmd` ou caminhos absolutos.
+
+Isso não vale para uma sessão **aberta** dentro de `projects/<nome>/`: ali a raiz do projeto
+já é a pasta errada. Feche e reabra na raiz da fábrica.

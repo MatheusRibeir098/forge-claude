@@ -2,7 +2,7 @@
 
 ## Resumo executivo
 
-O Forge é um plugin do Claude Code que organiza o trabalho de agente de IA em três papéis fixos — orquestrador, `dev` e `tester` — com a divisão imposta por hook, não por instrução que o modelo possa ignorar. Medido em 30 dias de uso real: as invocações que passaram de 60 turnos foram 8,8% do total e metade do custo de subagentes, porque o contexto de um agente é reenviado inteiro a cada turno — o mesmo turno custa 8,7 vezes mais numa invocação longa do que numa curta. O plugin embute limites que atacam esse ponto, skills de guardrail para ambiente real, e um mecanismo de distribuição: quem publica uma melhoria atualiza a ferramenta de toda a equipe. Este documento reúne o problema medido, o mecanismo que o resolve em parte, o que a ferramenta cobre além de criar projeto, e o que ainda não está comprovado.
+O Forge é um plugin do Claude Code que organiza o trabalho de agente de IA em quatro papéis fixos — orquestrador, `dev`, `tester` e `scout` — com a divisão imposta por hook, não por instrução que o modelo possa ignorar. Medido em 30 dias de uso real: as invocações que passaram de 60 turnos foram 8,8% do total e metade do custo de subagentes, porque o contexto de um agente é reenviado inteiro a cada turno — o mesmo turno custa 8,7 vezes mais numa invocação longa do que numa curta. O plugin embute limites que atacam esse ponto, skills de guardrail para ambiente real, e um mecanismo de distribuição: quem publica uma melhoria atualiza a ferramenta de toda a equipe. Este documento reúne o problema medido, o mecanismo que o resolve em parte, o que a ferramenta cobre além de criar projeto, e o que ainda não está comprovado.
 
 ## O problema, com os números
 
@@ -20,13 +20,13 @@ Dado externo: 93% das organizações já tiveram ao menos um incidente de infrae
 
 O Forge é um plugin do Claude Code publicado em `github.com/MatheusRibeir098/forge-claude`. O usuário conversa com **um orquestrador único**, que levanta requisitos, monta a especificação, quebra o trabalho em tarefas atômicas e despacha subagentes — em paralelo, quando possível.
 
-## Como funciona: os três papéis e os hooks que os impõem
+## Como funciona: os papéis e os hooks que os impõem
 
 - **`dev`** (sonnet) escreve todo o código de produto — é o único papel que pode fazer isso.
 - **`tester`** (sonnet) valida se o que o `dev` entregou funciona, e emite o veredito final (`PASSOU`/`FALHOU`). Não escreve código de produto.
 - **`scout`** (haiku, mais barato) lê, varre e pesquisa em volume. A varredura fica no contexto dele e morre quando ele termina — só o resumo volta ao orquestrador.
 
-O ponto central do desenho é que essa divisão é **imposta por hook**, não por instrução de prompt que o modelo pode esquecer numa conversa longa. Um hook bloqueia o orquestrador de escrever código de produto; outro bloqueia o `dev` de validar a própria entrega (subir servidor, rodar navegador/E2E, print, HTTP); um terceiro conta as chamadas de ferramenta de cada invocação e aplica um teto por papel, calibrado pela mediana medida no uso real. No teto, a invocação devolve o trabalho já feito como `PARCIAL`, e o orquestrador re-lotea o restante em vez de reiniciar a tarefa. Prompt é sugestão; hook é regra que se aplica mesmo quando o modelo "decidiria" diferente.
+O ponto central do desenho é que essa divisão é **imposta por hook**, não por instrução de prompt que o modelo pode esquecer numa conversa longa. Um hook bloqueia o orquestrador de escrever código de produto; outro bloqueia o `dev` de validar a própria entrega (subir servidor, rodar navegador/E2E, print, HTTP); um terceiro conta as chamadas de ferramenta de cada invocação e aplica um teto por papel, calibrado pela mediana medida no uso real. Outros dois cuidam do contexto do orquestrador: um lembra de delegar ao `scout` quando ele emenda leituras em vez de delegar, e outro devolve o shell da sessão principal à pasta base do projeto quando um `cd` solto o deixa para fora. Por fim, um hook decide, ao fim de cada `dev`, se o `tester` é obrigatório e em que modo. No teto, a invocação devolve o trabalho já feito como `PARCIAL`, e o orquestrador re-lotea o restante em vez de reiniciar a tarefa. Prompt é sugestão; hook é regra que se aplica mesmo quando o modelo "decidiria" diferente.
 
 O `tester` opera em dois modos: `browser` (Chrome real do usuário, sempre serial, teto de evidências por tarefa) e `contrato` (sem navegador: sobe o servidor MCP, chama as ferramentas com payload real, roda a suíte de teste do pacote tocado, e confere infraestrutura **só por leitura** — nunca comandos que criam, alteram, apagam ou fazem deploy).
 
@@ -62,16 +62,16 @@ Os tetos são calibrados pela mediana real de chamadas de ferramenta que cada pa
 
 - A projeção de economia depende de premissa otimista: que a tarefa re-loteada no teto cabe no número mínimo de lotes. Num cenário pessimista, com cada tarefa longa virando três lotes em vez de dois, a economia cai para perto de 1%. O ganho real está em cortar as invocações que fogem de controle, não em espremer as normais.
 - Uma medição anterior deste mesmo período circulou com números inflados: ela contava turnos sem deduplicar por `message.id`, e o Claude Code grava a mesma mensagem várias vezes no transcript (8.883 de 11.859 mensagens aparecem repetidas). O fator era exatamente 2,00x, e a distribuição por faixa saía deslocada para cima. Os números deste documento são os corrigidos, medidos com `plugins/forge/bin/forge-tokens`; a linha de base completa está em `docs/linha-de-base.md`.
-- As métricas vêm de uma pessoa só, em 20 dias, e descrevem o comportamento **anterior** às mudanças do plugin — nada foi medido depois do teto de turnos e dos demais hooks em produção.
+- As métricas vêm de uma pessoa só, em 30 dias, e descrevem o comportamento **anterior** às mudanças do plugin — nada foi medido depois do teto de turnos e dos demais hooks em produção.
 - O `tester` em modo `browser` depende de ferramentas que vêm de um servidor MCP. O plugin usa o único caminho que a documentação oficial garante — o agente não declara `tools`, e assim herda as ferramentas MCP da sessão. Falta confirmar em uso real que isso entrega o navegador a ele; o comando `/forge:doctor` faz essa verificação e diz o que fazer em cada desfecho. Enquanto não for confirmado, o modo `contrato` (sem navegador) funciona normalmente.
-- A suíte de avaliação automatizada do plugin ainda é mínima: `plugins/forge/evals/` tem 1 caso (`investigacao-nao-vira-codigo`, com `prompt.md` e 3 graders). Os hooks têm 4 scripts de teste unitário, com 44 casos no total.
+- A suíte de avaliação automatizada do plugin ainda é mínima: `plugins/forge/evals/` tem 1 caso (`investigacao-nao-vira-codigo`, com `prompt.md` e 3 graders). Os hooks têm 4 scripts de teste unitário (`test_require_tester.py`, `test_delega_varredura.py`, `test_deny_orchestrator.py` e `test_volta_pasta_base.py`), com 44 casos no total.
 
 ## Como adotar
 
 1. `/plugin marketplace add MatheusRibeir098/forge-claude`
 2. `/plugin install forge@forge-claude`
 3. Opcional, para quem trabalha com interface: `/plugin install forge-frontend@forge-claude`
-4. No repositório de trabalho, rodar `/forge:setup` — grava as permissões (allowlist que bloqueia deploy/push acidental) e os invariantes do `CLAUDE.md`, que não viajam dentro de um plugin.
+4. No repositório de trabalho, rodar `/forge:setup` — grava as permissões (`git push` pede confirmação, push forçado é negado) e os invariantes do `CLAUDE.md` — incluindo a regra de nunca fazer deploy nem push sem ordem explícita —, que não viajam dentro de um plugin. O comando mostra o que vai gravar, pede confirmação, e pergunta se você quer o mapa local de credenciais.
 5. A partir daí: `/forge` (cria projeto ou entra em modo de conserto), ou os atalhos `/forge:new` e `/forge:fix`.
 
 ## Glossário
