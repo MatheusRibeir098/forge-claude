@@ -1,34 +1,5 @@
-# Dependências
-node_modules/
-.pnpm-store/
-
-# Builds
-dist/
-build/
-*.tsbuildinfo
-
-# Ambiente
-.env
-.env.*
-!.env.example
-
-# Projetos gerados pelo Forge — estado local, não versionado neste repo.
-# Cada projeto tem o próprio git; aqui mora só a ferramenta.
-projects/*
-!projects/.gitkeep
+# estado transitório e artefatos locais
 *.log
-
-# Config local da máquina (identidades, preferências) — nunca versionar
-.claude/settings.local.json
-.claude/*.local.md
-
-# SO / editores
 .DS_Store
 .idea/
 .vscode/
-
-# estado transitório dos hooks (contadores de turno por subagente)
-.claude/state/
-
-# rascunho local, sem intenção de commit
-esteira-cicd-skeleton.md

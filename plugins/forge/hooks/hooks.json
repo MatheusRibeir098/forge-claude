@@ -28,6 +28,15 @@
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/rtk-root.sh\""
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/deny-aws-destrutivo.py\""
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -46,6 +55,15 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/require-tester.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Grep|Glob|Bash|WebFetch|WebSearch|Edit|Write|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/delega-varredura.py\""
           }
         ]
       }

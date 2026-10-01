@@ -15,7 +15,9 @@ Todo agente DEVE verificar antes de executar:
 
 2. **A ação modifica infraestrutura real (AWS, banco de dados, DNS, IAM)?**
    - Se sim → confirme com o usuário antes de executar.
-   - Nunca execute `cdk deploy`, `terraform apply`, `aws` CLI destrutivo sem confirmação explícita.
+   - `cdk deploy/destroy`, `terraform apply/destroy` e o `aws` CLI destrutivo/de identidade já
+     são bloqueados por `permissions` (`deny`, skill `setup-blocos`); o resto do `aws` CLI segue a
+     skill `aws-operacoes-seguras`.
 
 3. **A ação é irreversível?**
    - Deleção de recursos, drop de tabelas, remoção de buckets S3 → SEMPRE confirmar.
@@ -26,19 +28,10 @@ Todo agente DEVE verificar antes de executar:
 
 - **Nunca** hardcodar credenciais, access keys ou secrets em código
 - **Nunca** usar `*` em IAM policies — sempre least privilege
-- **Nunca** fazer `cdk deploy` ou `aws` CLI em produção sem confirmação explícita do usuário
 - Secrets vão no Secrets Manager ou Parameter Store, nunca em variáveis de ambiente no código
 - Recursos devem ter tag `Environment` (dev/staging/prod) — nunca criar recurso sem saber o ambiente alvo
 - Antes de criar qualquer recurso AWS, verificar se já existe um equivalente para evitar duplicação
-
-## Comandos AWS Destrutivos — Requer Confirmação
-
-Qualquer comando que contenha:
-- `delete`, `remove`, `destroy`, `terminate`, `drop`
-- `cdk destroy`
-- `aws s3 rm`, `aws dynamodb delete-table`, `aws rds delete`
-
-→ PARE e informe o usuário antes de executar.
+- Qualquer comando `aws` CLI ou MCP AWS → skill `aws-operacoes-seguras`
 
 ---
 

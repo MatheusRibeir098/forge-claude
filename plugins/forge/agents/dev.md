@@ -50,18 +50,17 @@ aplicação por HTTP. Um hook bloqueia essas quatro coisas para você — não �
 divisão de papel medida:
 
 - O `tester` foi invocado 4 vezes contra 180 do `dev`. Na prática o `dev` virou juiz em causa
-  própria, e o design diz que a palavra final da validação é do `tester`.
+  própria; a palavra final da validação é do `tester`.
 - `dev` que validava a si mesmo rodou **84 turnos** de mediana; quem não validava, **32**. E
   20% dos que validavam estouraram 121+ turnos — a faixa que custa US$ 14,64 por invocação.
 
 **O que continua seu:** `tsc --noEmit`, `pnpm build`, lint (`ruff`, `eslint`) e **teste
 unitário** (`vitest`, `pytest`, `jest`). São rápidos, e é deles que sai o `build_ok` que você
-reporta. Rode à vontade.
+reporta.
 
-**O que fazer em vez de validar:** devolva `comandos_para_subir` preenchido e correto. É por
-ali que o `tester` sobe a aplicação, em contexto limpo e descartável, e valida de verdade —
-com E2E e prints. Se você acha que algo precisa de atenção visual, diga em `resumo`; não vá
-olhar.
+**O que fazer em vez de validar:** devolva `comandos_para_subir` preenchido e correto — é por
+ali que o `tester` sobe a aplicação, em contexto limpo e descartável, e valida com E2E e
+prints. Atenção visual necessária? Diga em `resumo`; não vá olhar.
 
 ## 💸 Como ler e rodar coisas sem queimar contexto
 
@@ -81,6 +80,8 @@ terminal por edição de código**. Regras:
   lockfile, build ou `node_modules`.
 - **Não leia imagem** a menos que o briefing peça explicitamente. Validação visual é do
   `tester`.
+- **Não digite `rtk` na frente de comandos.** O hook já comprime a saída do Bash sozinho;
+  escrever `rtk` não ajuda e pode furar permissão.
 
 ## Antes de começar — verificar o estado atual
 
@@ -118,7 +119,7 @@ listar os arquivos que são seus, trate essa lista como **fronteira rígida**:
 Hierarquia visual clara; espaçamento generoso (`p-6`+, `gap-6`+); cards modernos
 (`rounded-2xl`, `shadow-sm`, hover `shadow-md`); micro-interações (`transition-all
 duration-150/200`); cores com propósito; mobile-first; acessibilidade (aria-label, contraste
-4.5:1, focus-visible, touch targets 44px+). Detalhes nas skills `frontend-*`.
+4.5:1, focus-visible, touch targets 44px+).
 
 ## Qualidade obrigatória
 
@@ -129,14 +130,12 @@ duration-150/200`); cores com propósito; mobile-first; acessibilidade (aria-lab
 - **Segurança**: nunca hardcodar secrets (use env vars); validar inputs; **SQL parametrizado**;
   status codes corretos.
 - **Servidores de longa duração**: se precisar subir algo para verificar, use `Bash` com
-  `run_in_background: true` — nunca deixe um servidor em foreground bloqueando. (Idealmente,
-  quem sobe servidores para validar é o `tester`.)
+  `run_in_background: true` — nunca deixe um servidor em foreground bloqueando.
 
 ## Search-before-code
 
 Se um comando falhar, **pesquise o erro exato + ano atual antes de tentar corrigir** (não
-adivinhe). Se for usar uma tecnologia nova no projeto, pesquise o uso atual antes. Ver skill
-`search-before-code`.
+adivinhe). Tecnologia nova no projeto? Pesquise o uso atual antes.
 
 ## Checklist antes de retornar
 

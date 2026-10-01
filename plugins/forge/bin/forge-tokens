@@ -1,0 +1,262 @@
+#!/usr/bin/env python3
+"""forge-tokens — mede o consumo real de qualquer projeto do Forge a partir dos transcripts.
+
+Lê ~/.claude/projects/<slug>/*.jsonl (sessão/orquestrador) e
+     ~/.claude/projects/<slug>/<sessao>/subagents/*.jsonl (subagentes)
+e reporta onde o token foi gasto: sessão vs subagentes, custo por `subagent_type`, e a
+distribuição de invocações por faixa de turnos — que é a alavanca principal (é onde o teto
+de turnos do hook `subagent-turn-budget.sh` age).
+
+⚠️ Os transcripts de subagente NÃO ficam soltos no diretório da sessão — eles vivem em
+`<sessao>/subagents/*.jsonl`. Um `os.listdir`/glob raso no diretório raiz não os encontra;
+é preciso caminhar a árvore (`glob(base/*/subagents/*.jsonl)`).
+
+Portátil por padrão: o slug do projeto é derivado do diretório de trabalho atual (o mesmo
+algoritmo que o Claude Code usa para nomear `~/.claude/projects/<slug>`: o caminho absoluto
+com "/" trocado por "-"). Funciona para qualquer projeto, não só o de origem do Forge.
+
+Uso:
+    bin/forge-tokens                        # projeto do diretório atual
+    bin/forge-tokens --dir /caminho/projeto  # projeto de outro diretório
+    bin/forge-tokens --projeto <slug>        # slug explícito de ~/.claude/projects/<slug>
+    bin/forge-tokens --desde 2026-09-04      # só turnos a partir de uma data (antes/depois)
+    bin/forge-tokens --json                  # saída em JSON
+
+O custo é a preço de lista da API (Opus 5 $5/$25, Sonnet 5 $2/$10, Haiku 4.5 $1/$5,
+cache read 0,1x input, cache write 1,25x em TTL de 5min e 2x em TTL de 1h). Num plano de
+assinatura você não paga isso — o valor serve para comparar as partes entre si.
+"""
+import argparse, collections, glob, json, os, statistics, sys
+
+PRICES = {"opus": (5.0, 25.0), "sonnet": (2.0, 10.0), "haiku": (1.0, 5.0)}
+TURN_BUCKETS = [(1, 10), (11, 30), (31, 60), (61, 120), (121, 10**9)]
+
+# Tetos por papel, em CHAMADAS DE FERRAMENTA, copiados do hook
+# `plugins/forge/hooks/subagent-turn-budget.sh` (fonte da verdade — se o hook mudar, atualize
+# aqui). O hook mede chamadas de ferramenta porque o payload não expõe turnos; a razão medida
+# no repo de origem foi ~1,73 turno por chamada de ferramenta, e é essa razão que usamos para
+# converter o teto para turnos (a unidade que este script mede). É uma aproximação, não uma
+# leitura direta do transcript — trate como estimativa.
+TURNS_PER_TOOLCALL = 1.73
+
+
+def role_cap_toolcalls(subagent_type: str) -> int:
+    t = subagent_type or ""
+    if t.startswith("forge-visual:"):
+        return 70 if "tester" in t else 130
+    if t == "tester":
+        return 65
+    if t == "scout":
+        return 40
+    if t == "dev":
+        return 35
+    return 40  # "outro": general-purpose, Explore, tipos desconhecidos ou sem .meta.json
+
+
+def role_cap_turns(subagent_type: str) -> float:
+    return role_cap_toolcalls(subagent_type) * TURNS_PER_TOOLCALL
+
+
+def model_family(model: str) -> str:
+    m = (model or "").lower()
+    if "haiku" in m:
+        return "haiku"
+    if "sonnet" in m:
+        return "sonnet"
+    return "opus"
+
+
+def scan_transcript(path: str, since: str | None):
+    """Retorna (tokens, custo, turnos) de um transcript."""
+    tokens = collections.Counter()
+    cost = 0.0
+    turns = 0
+    # O Claude Code grava a MESMA resposta em mais de uma linha do .jsonl (mesmo
+    # `message.id`, uuids diferentes — uma linha por bloco de conteúdo). Medido no repo de
+    # origem, o fator é ~2,2x. Sem esta deduplicação, tokens, custo e turnos vêm dobrados.
+    seen = set()
+    for line in open(path, errors="replace"):
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        if d.get("type") != "assistant":
+            continue
+        if since and (d.get("timestamp") or "") < since:
+            continue
+        msg = d.get("message") or {}
+        u = msg.get("usage") or {}
+        if not u:
+            continue
+        msg_id = msg.get("id")
+        if msg_id:
+            if msg_id in seen:
+                continue
+            seen.add(msg_id)
+        turns += 1
+        p_in, p_out = PRICES[model_family(msg.get("model"))]
+        input_tok = u.get("input_tokens", 0) or 0
+        output_tok = u.get("output_tokens", 0) or 0
+        cache_read = u.get("cache_read_input_tokens", 0) or 0
+        cache_write = u.get("cache_creation_input_tokens", 0) or 0
+        tokens["entrada"] += input_tok
+        tokens["saida"] += output_tok
+        tokens["cache_read"] += cache_read
+        tokens["cache_write"] += cache_write
+
+        cc = u.get("cache_creation") or {}
+        w5 = cc.get("ephemeral_5m_input_tokens")
+        w1 = cc.get("ephemeral_1h_input_tokens")
+        if w5 is not None or w1 is not None:
+            w5, w1 = w5 or 0, w1 or 0
+            write_cost = w5 / 1e6 * p_in * 1.25 + w1 / 1e6 * p_in * 2.0
+            write_cost += max(cache_write - w5 - w1, 0) / 1e6 * p_in * 1.25
+        else:
+            write_cost = cache_write / 1e6 * p_in * 1.25
+
+        cost += input_tok / 1e6 * p_in + output_tok / 1e6 * p_out
+        cost += cache_read / 1e6 * p_in * 0.1 + write_cost
+    return tokens, cost, turns
+
+
+def slugify(path: str) -> str:
+    """Mesmo algoritmo do Claude Code para nomear ~/.claude/projects/<slug>: caminho
+    absoluto com "/" trocado por "-". Não é heurística nossa — foi conferido contra
+    diretórios reais de ~/.claude/projects."""
+    return os.path.abspath(os.path.expanduser(path)).replace("/", "-")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--dir", default=None,
+                    help="diretório do projeto a medir (default: diretório de trabalho atual)")
+    ap.add_argument("--projeto", default=None,
+                    help="slug explícito de ~/.claude/projects/<slug> (sobrepõe --dir)")
+    ap.add_argument("--desde", help="ISO date/timestamp; só turnos a partir dele")
+    ap.add_argument("--json", action="store_true", dest="as_json")
+    args = ap.parse_args()
+
+    slug = args.projeto or slugify(args.dir or os.getcwd())
+    base_dir = os.path.expanduser(f"~/.claude/projects/{slug}")
+    if not os.path.isdir(base_dir):
+        print(f"não achei {base_dir}", file=sys.stderr)
+        print(f"(slug calculado a partir de {args.dir or os.getcwd()!r}: {slug!r})", file=sys.stderr)
+        print("veja os slugs disponíveis com: ls ~/.claude/projects", file=sys.stderr)
+        print("e passe o certo com --projeto <slug>", file=sys.stderr)
+        return 1
+
+    orch_tokens, orch_cost, orch_turns = collections.Counter(), 0.0, 0
+    orch_sessions = 0
+    for f in glob.glob(os.path.join(base_dir, "*.jsonl")):
+        t, c, n = scan_transcript(f, args.desde)
+        if not n:
+            continue
+        orch_sessions += 1
+        orch_tokens += t
+        orch_cost += c
+        orch_turns += n
+
+    by_type = collections.defaultdict(lambda: {"custo": 0.0, "invoc": 0, "turnos": 0, "estourou": 0})
+    invocations = []  # (subagent_type, turnos, custo)
+    sub_tokens, sub_cost, sub_turns = collections.Counter(), 0.0, 0
+    for f in glob.glob(os.path.join(base_dir, "*", "subagents", "*.jsonl")):
+        t, c, n = scan_transcript(f, args.desde)
+        if not n:
+            continue
+        subagent_type = "?"
+        meta_path = f[:-6] + ".meta.json"
+        if os.path.exists(meta_path):
+            try:
+                subagent_type = json.load(open(meta_path)).get("agentType", "?")
+            except ValueError:
+                pass
+        e = by_type[subagent_type]
+        e["custo"] += c
+        e["invoc"] += 1
+        e["turnos"] += n
+        if n > role_cap_turns(subagent_type):
+            e["estourou"] += 1
+        invocations.append((subagent_type, n, c))
+        sub_tokens += t
+        sub_cost += c
+        sub_turns += n
+
+    total_cost = orch_cost + sub_cost
+    total_turns = orch_turns + sub_turns
+    total_input = (orch_tokens["entrada"] + orch_tokens["cache_read"] + orch_tokens["cache_write"]
+                   + sub_tokens["entrada"] + sub_tokens["cache_read"] + sub_tokens["cache_write"])
+    total_output = orch_tokens["saida"] + sub_tokens["saida"]
+    total_estourou = sum(v["estourou"] for v in by_type.values())
+
+    if args.as_json:
+        print(json.dumps({
+            "sessoes": orch_sessions,
+            "sessao": {"custo_usd": round(orch_cost, 2), "turnos": orch_turns, "tokens": dict(orch_tokens)},
+            "subagentes": {"custo_usd": round(sub_cost, 2), "turnos": sub_turns, "tokens": dict(sub_tokens),
+                           "invocacoes": len(invocations), "estourou_teto": total_estourou},
+            "por_tipo": {k: {"custo_usd": round(v["custo"], 2),
+                              **{x: v[x] for x in ("invoc", "turnos", "estourou")}}
+                         for k, v in by_type.items()},
+            "faixas_de_turnos": [
+                {"faixa": f"{lo}-{hi}" if hi < 10**9 else f"{lo}+",
+                 "n": len([x for x in invocations if lo <= x[1] <= hi]),
+                 "custo_total_usd": round(sum(x[2] for x in invocations if lo <= x[1] <= hi), 2)}
+                for lo, hi in TURN_BUCKETS
+            ],
+            "turnos_totais": total_turns,
+            "tokens_entrada_total": total_input,
+            "tokens_saida_total": total_output,
+            "total_usd": round(total_cost, 2),
+        }, indent=2, ensure_ascii=False))
+        return 0
+
+    scope = f" (desde {args.desde})" if args.desde else ""
+    print(f"=== forge-tokens — consumo medido{scope} ===\n")
+    print(f"projeto: {slug}\n")
+    print(f"sessões: {orch_sessions:,}   invocações de subagente: {len(invocations):,}   "
+          f"turnos totais: {total_turns:,}")
+    print(f"tokens de entrada (com cache): {total_input:,}   tokens de saída: {total_output:,}\n")
+
+    print(f"{'':16}{'custo':>12}{'%':>7}{'turnos':>9}{'cache_read':>15}{'cache_write':>14}")
+    for name, cost, turns, tk in (("sessão", orch_cost, orch_turns, orch_tokens),
+                                  ("subagentes", sub_cost, sub_turns, sub_tokens)):
+        pct = cost / total_cost * 100 if total_cost else 0
+        print(f"{name:16}{'US$ '+format(cost,',.2f'):>12}{pct:>6.0f}%{turns:>9,}"
+              f"{tk['cache_read']:>15,}{tk['cache_write']:>14,}")
+    print(f"{'TOTAL':16}{'US$ '+format(total_cost,',.2f'):>12}")
+
+    if by_type:
+        print(f"\n--- por tipo de subagente ---")
+        print(f"{'tipo':26}{'custo':>11}{'invoc':>7}{'por invoc':>11}{'turnos/inv':>12}{'>teto':>7}")
+        for subagent_type, v in sorted(by_type.items(), key=lambda x: -x[1]["custo"]):
+            print(f"{subagent_type:26}{'US$ '+format(v['custo'],',.2f'):>11}{v['invoc']:>7}"
+                  f"{'US$ '+format(v['custo']/v['invoc'],',.2f'):>11}{v['turnos']/v['invoc']:>12.1f}"
+                  f"{v['estourou']:>7}")
+        pct_estourou = total_estourou / len(invocations) * 100 if invocations else 0
+        print(f"\ninvocações acima do teto de turnos do próprio papel: {total_estourou} "
+              f"de {len(invocations)} ({pct_estourou:.0f}%)")
+        print("(teto por papel convertido de plugins/forge/hooks/subagent-turn-budget.sh, "
+              f"~{TURNS_PER_TOOLCALL} turno/chamada de ferramenta)")
+
+    if invocations:
+        print(f"\n--- a alavanca: distribuição e custo por faixa de turnos ---")
+        print(f"{'turnos':14}{'n':>5}{'custo/invocação':>18}{'custo/turno':>14}")
+        for lo, hi in TURN_BUCKETS:
+            g = [x for x in invocations if lo <= x[1] <= hi]
+            if not g:
+                continue
+            label = f"{lo}-{hi}" if hi < 10**9 else f"{lo}+"
+            c = sum(x[2] for x in g)
+            t = sum(x[1] for x in g)
+            print(f"{label:14}{len(g):>5}{'US$ '+format(c/len(g),',.2f'):>18}{'US$ '+format(c/t,',.4f'):>14}")
+        dev_turns = sorted(n for subagent_type, n, _ in invocations if subagent_type == "dev")
+        if dev_turns:
+            med = statistics.median(dev_turns)
+            p90 = dev_turns[min(int(len(dev_turns) * 0.9), len(dev_turns) - 1)]
+            print(f"\nturnos por invocação do `dev`: mediana {med:.0f}, p90 {p90}, máx {dev_turns[-1]}")
+            print(f"(o teto do hook para `dev` é {role_cap_turns('dev'):.0f} turnos)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

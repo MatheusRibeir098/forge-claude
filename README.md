@@ -1,402 +1,219 @@
-<div align="center">
+# Forge
 
-# 🔥 Forge
+Plugin do Claude Code para a organização `datisolucoesemti`. Fábrica de software movida a
+subagentes, com validação imposta por hook em vez de convenção.
 
-### Uma fábrica de software que cabe numa conversa.
+## Início rápido
 
-**Você descreve. O Forge decompõe, delega para um time de subagentes e entrega validado.**
+```
+/plugin marketplace add datisolucoesemti/dati-forge-plugin
+/plugin install forge@forge
+/forge:setup      # no repositório onde você vai trabalhar
+/forge:forge
+```
 
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1%2B-D97757?style=flat-square)](https://claude.com/claude-code)
-[![Subagentes](https://img.shields.io/badge/subagentes-scout%20%2B%20dev%20%2B%20tester-6366f1?style=flat-square)](#o-time)
-[![Plugin](https://img.shields.io/badge/instala%20como-plugin-8b5cf6?style=flat-square)](#instalação)
-[![Paralelismo](https://img.shields.io/badge/paralelismo-por%20padrão-16a34a?style=flat-square)](#-paralelismo-é-o-padrão)
-[![Sem tmux](https://img.shields.io/badge/tmux-não%20precisa-64748b?style=flat-square)](#por-que-não-tem-tmux)
-
-</div>
-
----
+Detalhe de cada passo em [Instalação](#instalação); como usar no dia a dia em
+[`docs/tutorial.md`](docs/tutorial.md).
 
 ## O que é
 
-O Forge é um **plugin do Claude Code** que transforma sua sessão num **orquestrador de
-projetos**. Você conversa com **um único agente** — ele levanta os requisitos, escreve a
-spec, quebra em tarefas atômicas e coordena um time de subagentes especializados (`scout`,
-`dev`, `tester`) até o software existir, funcionando e testado. Você nunca abre um terminal
-de agente, nunca fala com o `dev` diretamente, nunca fica olhando um processo para saber se
-acabou — você conversa, ele reporta.
+Com o Forge você conversa com **um único orquestrador**. É ele quem levanta os requisitos,
+monta a spec, quebra o trabalho em tarefas atômicas e despacha subagentes em paralelo para
+executá-las. Quem escreve código é sempre o `dev`; quem valida se o que foi escrito realmente
+funciona é sempre o `tester`; quem faz varredura e pesquisa em volume — sem sujar a conversa
+principal — é o `scout`. Essa divisão de papel não é uma convenção que o modelo pode esquecer
+no meio da conversa: ela é **imposta por hook**. Um hook bloqueia o orquestrador de escrever
+código de produto; outro bloqueia o `dev` de validar a si mesmo (subir servidor, rodar
+browser/E2E, tirar print, bater na app por HTTP); e cada invocação de subagente tem um teto de
+turnos, calibrado por medição, que devolve o trabalho parcial em vez de deixar a invocação
+fugir de controle.
 
-```
-você ──▶ 🔥 Forge ──┬──▶ 🔭 scout    lê, varre, pesquisa, e conta em 5 linhas
-                    ├──▶ 🛠️  dev      escreve todo o código
-                    └──▶ 🔍 tester   sobe, testa, printa, aprova ou reprova
-```
+Por que isso existe: o gasto dominante de um loop de agentes não é o volume de trabalho, é o
+**contexto reenviado** — a cada turno, a invocação inteira volta para o modelo, e ela só
+cresce. Medido em 30 dias de uso real (ver `docs/linha-de-base.md`): uma invocação de até 10
+turnos custou **US$ 0,08**; uma de 121+ turnos, **US$ 21,93**. E o mesmo **turno** custa
+**8,7× mais** no fim de uma invocação longa do que no começo de uma curta. As 29 invocações
+que passaram de 60 turnos foram 8,8% do total e **metade** do custo de todos os subagentes.
 
-## A ideia em 30 segundos
+O lado que costuma passar despercebido é a **sessão principal**: ela fez 26% dos turnos e
+gastou 55% da conta, porque acumula tudo o que é lido e nunca poda. Por isso existe o `scout`,
+e por isso um hook avisa quando o orquestrador emenda leituras em vez de delegar.
 
-```
-você  › /forge
-      › quero um app pra controlar minhas assinaturas mensais
+## Os três subagentes
 
-🔥    › Três perguntas antes de eu montar a spec:
-        1. Só você usa ou tem login? 2. Precisa de alerta de renovação?
-        3. Web, ou também no celular?
+| Papel | Modelo | Pode | Não pode |
+|---|---|---|---|
+| `dev` | sonnet | Escreve todo o código de produto; roda `tsc`/build/lint e teste unitário (é dali que sai o `build_ok` que ele reporta) | Subir servidor, rodar browser/E2E, tirar screenshot ou bater na app por HTTP — bloqueado por hook |
+| `tester` | sonnet | Valida a entrega em dois modos (`browser`/`contrato`) e emite o veredito final — é a palavra final da validação | Escrever código de produto (o `Write` dele serve só para spec de teste e para salvar evidência) |
+| `scout` | haiku | Lê, varre, pesquisa lib/API na web e mapeia estrutura em volume — o contexto da varredura morre com ele, só o resumo volta | Escrever ou editar qualquer arquivo, instalar dependência, alterar estado, decidir pelo usuário |
 
-você  › só eu, sim, e responsivo
+## O `tester` em dois modos
 
-🔥    › Spec pronta em projects/assinaturas/prompt.md — 11 tarefas em 4 lotes.
-        Começando o lote 1: 3 devs em paralelo (schema, API, layout base)
-        + 1 agente pesquisando a lib de notificação.
+- **`browser`** — valida a UI no Chrome real do usuário via `claude-in-chrome`. Roda sempre
+  **serial** (é o navegador real, uma janela só) e tem teto de **5 evidências visuais** por
+  tarefa.
+- **`contrato`** — sem navegador: sobe o MCP server em stdio e chama as tools de verdade com
+  payload real, roda a suíte de teste completa do pacote tocado, confere infraestrutura AWS
+  **só por leitura** (`describe-*`/`list-*`/`get-*`; nunca `create-*`/`update-*`/`delete-*`
+  nem `deploy`/`apply`), e compara o resultado com o critério de aceite da tarefa.
 
-        ✅ T1 schema  ✅ T2 API  ✅ T3 layout    tester: PASSOU (4 prints)
-        Lote 2 rodando. Faltam 6 tarefas.
-```
-
-## Não é só para criar projeto
-
-O Forge serve para o dia a dia: pergunta, investigação, tarefa de sistema, apontamento de
-horas, celular por `adb`. A regra de quem faz o quê é a mesma sempre:
-
-| A tarefa é… | Caminho |
-|---|---|
-| pergunta, conversa, ida-e-volta | o Forge **direto** — delegar perde o fio e paga ~11k tokens de boot por nada |
-| **ler, varrer, procurar, pesquisar** em volume | `scout` |
-| escrever código | `dev` |
-| validar app que sobe | `tester` |
-
-O `scout` existe por um número: quando a varredura acontece na sessão principal, ela é
-reenviada em **todo** turno seguinte — o contexto chegou a **652 mil tokens por turno** aqui, e
-uma sessão de "ler e entender uma lib" custou **US$ 98**. Delegando, o lixo da busca morre com
-o subagente e volta só o resumo. Ele roda em `haiku`, o modelo mais barato do time.
-
-## Por que ele é diferente
-
-### 🧠 Um só interlocutor
-
-O modelo mental é de **delegação**, não de ferramenta. Você não escolhe qual agente chamar
-nem monta prompt para subagente: o Forge traduz o que você quer em briefings auto-contidos.
-Se algo travar, ele volta e **pergunta** — em português, sem jargão de execução.
-
-### ⚡ Paralelismo é o padrão
-
-Antes de **cada** invocação, o orquestrador roda um checkpoint de quatro perguntas: tem
-tarefa irmã liberada? tem pesquisa para adiantar? tem validação pendente? vale uma segunda
-opinião? Tudo que der "sim" é disparado **na mesma leva**.
-
-O backlog já nasce agrupado em lotes, com as listas de arquivos cruzadas para garantir que
-dois agentes nunca escrevam no mesmo lugar. Você não precisa pedir para ele acelerar.
-
-### 🔒 Papel é imposto por hook, não pedido no prompt
-
-Três regras que o modelo não pode esquecer, porque não dependem dele:
-
-| Regra | Como é imposta |
-|---|---|
-| O orquestrador **não escreve código de produto** | `PreToolUse` bloqueia por caminho; subagentes passam pela distinção de `agent_type` |
-| O `dev` **não valida** — não sobe servidor, não roda E2E, não tira print, não bate na app por HTTP | `PreToolUse` nega esses comandos quando `agent_type` é `dev`. Ele mantém `tsc`/`build`/lint/teste unitário, que é o `build_ok` dele |
-| Nenhum subagente estoura o **teto do seu papel** | contador por `agent_id`; no teto, retorna `PARCIAL` e o Forge re-loteia (tabela em [Ajustando o orçamento](#ajustando-o-orçamento-de-turnos)) |
-| Tarefa com UI ou rota **não fecha sem `tester`** | `PostToolUse(Agent)` lê o briefing despachado e injeta o lembrete quando a tarefa é observável |
-
-As duas últimas nasceram de uma medição desconfortável: o `tester` foi invocado **4 vezes
-contra 180 do `dev`**, e 78% dos `dev` estavam validando a si mesmos. A causa raiz apareceu no
-próprio dado — a skill `orchestrator`, que descreve o loop `dev → tester`, foi carregada **6
-vezes em 38 sessões**. Regra que vive só numa skill sob demanda não vale para as 84% de
-sessões que nunca a leem; daí a imposição por hook, no instante da decisão. Além de ser juiz em causa própria,
-sai caro — `dev` que valida rodou 84 turnos de mediana contra 32 de quem não valida, e 20%
-deles estouraram a faixa de 121+ turnos (US$ 14,64 por invocação). A iteração "sobe → testa →
-falha → corrige" acontecia no contexto que é reenviado inteiro a cada turno; no `tester` ela
-roda em contexto limpo e descartável.
-
-Resultado: o contexto do orquestrador fica limpo para o que ele faz bem — decompor, revisar e
-decidir; e o do `dev`, para escrever código.
-
-### 📸 Nada passa sem prova
-
-O `tester` não aprova por leitura de código. Em modo `browser` ele sobe a aplicação em
-background, exercita a UI no Chrome real do usuário via `claude-in-chrome`, captura prints do
-que a tarefa mudou e **analisa as imagens**; em modo `contrato` (MCP/CLI/API sem front) chama
-as tools de verdade com payload real, sem print. Nos dois modos devolve um veredito
-estruturado — reprovou? O erro volta para o `dev` como briefing de correção, com contagem de
-tentativas.
-
-As imagens ficam **dentro do contexto do tester**, que é descartado ao fim da invocação — o
-orquestrador recebe a falha descrita em texto, nunca a imagem. A validação visual sai de graça
-no turno seguinte, e o teto de 5 prints existe para manter o foco no que a tarefa mudou, não
-para economizar: medindo os transcripts, imagem deu ~1% do consumo.
-
-### 💰 Barato por medição, não por palpite
-
-As 35 sessões deste repo foram medidas token a token (`~/.claude/projects/*/subagents/*.jsonl`):
-2,65 bilhões de tokens processados, **55% deles nos subagentes**, e dentro dos subagentes
-**55% do custo é contexto reenviado** (`cache_read`). O que a medição mostrou:
-
-- **Turno é o que custa, não imagem.** O custo de uma invocação foi de **US$ 0,04** (até 10
-  turnos) a **US$ 14,64** (121+ turnos) — 366×. O contexto do subagente cresce e é reenviado
-  inteiro a cada turno, então o custo *por turno* também sobe (5,4× entre as duas faixas).
-  Imagem, o suspeito óbvio, deu **~1%**.
-- **Teto de turnos imposto por hook.** ~35 chamadas de ferramenta por `dev` (≈60 turnos), e
-  teto próprio para cada outro papel. No limite ele devolve `status: PARCIAL` com
-  `feito`/`falta`/`proximo_briefing`, e o orquestrador re-loteia — trabalho parcial bem
-  descrito, não retrabalho. Esse único corte vale ~58% da conta de subagentes pela simulação
-  (~76% se apertado para 26, ao custo de cortar acima da mediana).
-- **Sonnet por padrão, opus sob demanda.** Medido, `dev` em opus custou 2,8× por invocação.
-  O orquestrador promove só em arquitetura ou destravamento de Loop Travado.
-- **Bash foi 61% do que os subagentes ingeriram.** Os briefings mandam usar `Grep`/`Glob`/
-  `Read` (com `limit`) em vez de `grep`/`find`/`cat`, filtrar na fonte e nunca reler o que já
-  está no contexto.
-- **Skills sob demanda.** O orquestrador nomeia 1–2 skills por briefing; nada de carregar 11
-  "por precaução". No boot, cada skill custa só a sua linha de descrição.
-- **Arquivos de controle com teto.** `progress.md` mantém os ciclos recentes; o resto vai
-  para o histórico, que não é lido no loop.
-
-E o que a medição **descartou**: paralelismo não custa caro aqui. A tese de que o fan-out paga
-`cache_write` a preço de cache frio não se sustentou nos dados — 3.448 tokens de `cache_write`
-por turno em invocações solo contra 3.349 em lote. O Invariante 5 fica de pé.
-
-### 🧭 Estado em disco, não na memória
-
-Cada projeto carrega `.forge/tasks.md` (backlog e lotes), `.forge/progress.md` (ciclos
-recentes), `.forge/progress-historico.md` (arquivo) e `.forge/evidencias/` (prints do
-`tester`). Fechou o notebook no meio? Reabre e continua de onde parou — a fonte da verdade
-está em arquivo, não no histórico da conversa.
-
-## O time
-
-| Papel | Quem é | Do que é dono |
-|---|---|---|
-| 🔥 **Forge** | a sessão principal | requisitos, spec, decomposição, briefings, revisão, relatório |
-| 🔭 **scout** | subagente (`haiku`) | ler, varrer, procurar, pesquisar — não escreve nada |
-| 🛠️ **dev** | subagente (`sonnet`, opus sob demanda) | **todo** o código de produto |
-| 🔍 **tester** | subagente (`sonnet`) | valida em dois modos: `browser` — exercita a UI no Chrome real do usuário via `claude-in-chrome` (aba nova, navega, preenche, até 5 prints); `contrato` — sem navegador, sobe o servidor/MCP em stdio, chama as tools de verdade e confere infra AWS só por leitura |
-
-Cada subagente devolve **JSON estruturado** — o orquestrador decide olhando dados, nunca
-adivinhando por texto de terminal.
+Um hook lê o **retorno estruturado** do `dev` (os arquivos que ele alterou e os comandos para
+subir) e recomenda automaticamente qual modo usar. O orquestrador não pergunta ao usuário qual
+modo escolher — ele **decide e avisa** em uma linha.
 
 ## Instalação
 
+### 1. Instalar o plugin (uma vez por máquina)
+
 ```
-/plugin marketplace add MatheusRibeir098/forge-claude
+/plugin marketplace add datisolucoesemti/dati-forge-plugin
 /plugin install forge@forge
-/plugin install forge-frontend@forge   # opcional — só se o trabalho tiver interface
 ```
 
-Para uso local (desenvolvendo o próprio Forge, ou testando antes de publicar), o marketplace
-também pode ser adicionado por diretório:
+O `forge-frontend` é **opcional** — instale só se você trabalha com interface:
 
 ```
-/plugin marketplace add ~/forge-claude
+/plugin install forge-frontend@forge
 ```
 
-Pré-requisitos: [Claude Code](https://claude.com/claude-code) 2.1+ autenticado. Para o modo
-`browser` do `tester`, a extensão `claude-in-chrome` instalada e com permissão liberada nos
-sites que a tarefa vai exercitar.
+Ele traz as 10 skills de frontend usadas pelo `dev` (TypeScript, React, Tailwind,
+responsividade, dark mode, design de UI). Quem trabalha com MCP, CLI, dados ou infraestrutura
+não precisa — e não paga o contexto delas. Se ele não estiver instalado e um briefing nomear
+uma dessas skills, a ferramenta responde `Unknown skill: <nome>` e **o trabalho segue**; não é
+erro.
 
-**Primeiro passo depois de instalar: rode `/forge-setup`.** Um plugin não carrega
-`permissions` nem `CLAUDE.md` do repositório de quem o instala — só agentes, comandos, hooks
-e skills viajam dentro dele. O `/forge-setup` escreve no `CLAUDE.md` do seu repositório o
-bloco de invariantes (a seção "As regras da casa" abaixo) e as `permissions` que os hooks
-esperam; sem isso os hooks rodam, mas a sessão não conhece as regras que eles impõem.
-
-## Contextos de operação
-
-O Forge opera em dois contextos, detectados pelo hook a partir da raiz do projeto:
-
-- **Modo fábrica** — a raiz tem `projects/` **e** `templates/prompt.template.md` (é o caso
-  deste próprio repositório). Os arquivos de controle ficam em `projects/<nome>/.forge/`, um
-  por projeto gerado.
-- **Modo repo atual** — o plugin instalado em qualquer outro repositório. Os arquivos de
-  controle ficam em `.forge/` na raiz do repo onde a sessão roda.
-
-## Uso
-
-Dentro da sessão, com o plugin instalado:
-
-| Comando | O que faz |
-|---|---|
-| `/forge-setup` | Primeiro passo — escreve permissions e invariantes no seu `CLAUDE.md` |
-| `/forge` | Hub — pergunta se é projeto novo ou fix |
-| `/forge-new <ideia>` | Vai direto para criação do zero |
-| `/forge-fix <projeto + pedido>` | Bug ou feature em projeto existente |
-
-Acompanhe os subagentes em **`/tasks`**. Para desenvolver o próprio Forge (modo fábrica deste
-repositório), `bin/forge` abre uma sessão já dentro dele.
-
-## Por que não tem tmux
-
-Coordenar agentes por `tmux send-keys` + `sleep` + scraping de terminal é frágil: você
-infere que uma etapa acabou olhando texto na tela, e qualquer prompt inesperado trava o
-loop. Aqui o fim de uma etapa é o **retorno da chamada do subagente** — determinístico.
-Servidores de longa duração sobem via `Bash(run_in_background)`, sem nada segurando o
-foreground.
-
-## As regras da casa
-
-Seis invariantes valem em qualquer momento da sessão, sempre no contexto. Como plugin, o
-Forge não carrega `CLAUDE.md` — é o `/forge-setup` que grava este bloco no `CLAUDE.md` do seu
-repositório:
-
-| # | Invariante |
-|---|---|
-| 1 | O orquestrador **não escreve código de produto** — delega ao `dev` (reforçado por hook) |
-| 2 | **Nunca** `git push` nem deploy por iniciativa própria — só sob ordem explícita |
-| 3 | Mensagens de commit em **português** |
-| 4 | Confirma antes de matar processo; pesquisa antes de usar tecnologia nova |
-| 5 | **Paralelize por padrão** — o usuário não precisa pedir para adiantar trabalho |
-| 6 | **Cada token reenviado é pago de novo** — teto de turnos por subagente, sonnet por padrão, validação delegada ao `tester`, output filtrado na fonte |
-
-## Skills incluídas
-
-Carregadas sob demanda, não de uma vez. O plugin `forge` traz 13:
-
-**Orquestração** — `orchestrator`, `meta-prompt`, `spec-driven`, `scaffolding`, `lessons-learned`
-**Qualidade** — `clean-code`, `testing-strategy`, `e2e-chrome`, `seguranca`, `search-before-code`
-**Operação** — `safe-operations`, `no-deploy-no-push`, `git-profiles`
-
-O plugin `forge-frontend` — **opcional**, instale junto quando o trabalho tiver interface —
-traz mais 10: `frontend-typescript`, `frontend-react-patterns`, `frontend-tailwind`,
-`frontend-responsive`, `frontend-dark-mode`, `frontend-modern-design`, `frontend-ui-design`,
-`frontend-animations`, `frontend-performance`, `frontend-content-ux`. Se um briefing citar
-uma `frontend-*` sem o plugin instalado, a ferramenta responde `Unknown skill: <nome>` — não
-é erro, o trabalho segue sem ela.
-
-## Estrutura
+### 2. Preparar o repositório (uma vez por repositório)
 
 ```
-forge-claude/
-├── .claude-plugin/marketplace.json   # declara os dois plugins
-├── bin/forge                  # entrypoint (modo fábrica deste repo)
-├── bin/forge-tokens           # medidor de consumo (lê os transcripts)
-├── plugins/
-│   ├── forge/                 # plugin principal
-│   │   ├── agents/{dev,tester,scout}.md
-│   │   ├── commands/{forge,forge-new,forge-fix,forge-setup}.md
-│   │   ├── hooks/              # imposição de papel + teto de turnos, via hooks.json
-│   │   └── skills/             # as 13 skills do plugin
-│   └── forge-frontend/
-│       └── skills/             # as 10 skills frontend-*, opcionais
-├── templates/                 # prompt.template.md, .npmrc
-└── projects/<nome>/           # projetos gerados em modo fábrica (não versionados aqui)
-    ├── prompt.md              # a spec
-    └── .forge/                # tasks.md · progress.md · progress-historico.md · evidencias/
+/forge:setup
 ```
 
-Em modo repo atual (plugin instalado em outro repositório) não existe `projects/`: a pasta de
-controle é `.forge/` na raiz desse repo, escrita ali pelo `/forge-setup`.
+Ele diagnostica a pasta, **mostra o que pretende gravar** e só escreve depois que você
+confirmar — nunca sobrescreve nada em silêncio. Se a pasta ainda não for uma "fábrica" (veja a
+seção seguinte), ele oferece criar uma. E oferece instalar o `rtk`, que é opcional.
 
-## RTK — opcional, e de propósito
+Este passo é necessário porque duas coisas **não viajam dentro de um plugin**:
 
-O hook de turnos encadeia o [RTK](https://github.com/rtk-ai/rtk) para compactar a saída de
-alguns comandos. **O binário não é versionado**: em máquina nova o hook testa
-`[ -x $RTK_BIN ]` e simplesmente não delega — nada quebra, você só não ganha a compactação.
-Para habilitar:
+- as `permissions` (`allow`/`ask`/`deny` de `.claude/settings.json`) — é ali que fica a rede
+  de segurança que impede `cdk deploy`, `terraform apply`, `docker push` e comando `aws`
+  destrutivo por iniciativa própria de um agente;
+- os invariantes, que vão para o `CLAUDE.md` entre marcadores (rodar de novo atualiza, não
+  duplica).
+
+### 3. Conferir
+
+```
+/forge:doctor
+```
+
+Diagnostica e explica o que encontrou, sem alterar nada: contexto detectado, permissions,
+invariantes, hooks, `rtk`, uma demonstração inofensiva do guardrail de AWS, e se o `tester`
+enxerga o navegador.
+
+### 4. Usar
+
+```
+/forge:forge
+```
+
+Passo a passo de uso, com exemplos de pedido real em cada fluxo:
+[`docs/tutorial.md`](docs/tutorial.md).
+
+## Os dois jeitos de usar
+
+- **Fábrica** — uma pasta base com `projects/` dentro. Todo repositório em que você trabalha é
+  clonado para lá, e você conversa sempre com **um** orquestrador rodando na raiz da base, que
+  sabe onde cada projeto está. Projeto novo nasce em `projects/<nome>/`, com git próprio. O
+  `/forge:setup` cria essa pasta para quem ainda não tem.
+- **Repo atual** — o plugin instalado e `/forge` rodado direto dentro do repositório onde você
+  já trabalha; o controle fica em `.forge/` na raiz dele.
+
+O hook detecta o contexto sozinho, sem você precisar avisar: é **fábrica** quando a raiz do
+repositório tem `projects/` **e** `templates/prompt.template.md`; qualquer outro caso é
+**repo atual**.
+
+> ⚠️ **Abra a sessão sempre na raiz** — da fábrica, ou do repositório preparado pelo
+> `/forge:setup`. **Nunca abra o Claude Code direto dentro de `projects/<nome>/`** (um
+> projeto filho, com git próprio, dentro da fábrica): esse diretório não tem o `CLAUDE.md`
+> nem as `permissions` do Forge, e não há garantia de que os hooks do plugin disparem ali —
+> a rede de segurança inteira (bloqueio de código pelo orquestrador, guardrail de `aws`
+> destrutivo, teto de turnos) depende de rodar a partir da raiz. Se precisar mexer num
+> projeto específico, peça ao orquestrador na raiz da fábrica — ele sabe onde cada um está.
+
+## Comandos
+
+- `/forge` — hub do Forge: cria um projeto do zero ou entra no modo fix de um projeto
+  existente.
+- `/forge:new` — atalho que entra direto no fluxo de criar um projeto do zero.
+- `/forge:fix` — atalho que entra direto no modo fix/implementação de um projeto existente.
+- `/forge:setup` — prepara o repositório atual para rodar o Forge: grava as `permissions`
+  (allow/ask/deny) em `.claude/settings.json` e os invariantes no `CLAUDE.md`; opcionalmente
+  cria a fábrica de projetos e/ou instala o `rtk`.
+- `/forge:doctor` — diagnostica o ambiente e explica o que encontrou, sem alterar nada:
+  contexto detectado, `permissions`, invariantes, hooks, `rtk`, uma demonstração inofensiva
+  do guardrail de AWS, e se o `tester` enxerga as ferramentas do navegador.
+
+Passo a passo prático de uso, com exemplos: [`docs/tutorial.md`](docs/tutorial.md).
+
+## Custo e limites
+
+Cada invocação de subagente tem um teto de chamadas de ferramenta, imposto por hook
+(`plugins/forge/hooks/subagent-turn-budget.sh`), calibrado pela **mediana** de chamadas que
+cada papel gastava nos transcritos medidos — um teto abaixo da mediana estrangula o agente e
+gera retrabalho, que é o desperdício mais caro que existe:
+
+| Papel | Aviso | Teto | Variáveis de ambiente | Mediana medida |
+|---|---|---|---|---|
+| `dev` | 25 | 35 (≈60 turnos) | `FORGE_TURN_WARN` / `FORGE_TURN_CAP` | 42 chamadas (74 turnos) |
+| `tester` | 45 | 65 | `FORGE_TESTER_WARN` / `FORGE_TESTER_CAP` | 54 chamadas |
+| `scout` | 28 | 40 | `FORGE_SCOUT_WARN` / `FORGE_SCOUT_CAP` | 6 chamadas |
+
+O teto do `dev` é o ponto conservador de propósito: 35 chamadas atingem ~54% das invocações e
+respondem por ~58% da conta de subagentes pela simulação (apertar para 26 chegaria a ~76%, mas
+corta acima da mediana e o retrabalho de tarefa partida no meio custa mais que a economia). No
+teto, a invocação devolve `status: "PARCIAL"` e o orquestrador re-loteia sem perder o trabalho
+já feito — não é falha.
+
+Por trás desses tetos está o mesmo custo que justifica a decomposição em tarefas pequenas:
+
+| Turnos na invocação | Custo médio | Custo por turno |
+|---|---|---|
+| 1–10 | US$ 0,08 | US$ 0,0139 |
+| 31–60 | US$ 1,86 | US$ 0,0435 |
+| 61–120 | US$ 5,97 | US$ 0,0724 |
+| 121+ | US$ 21,93 | US$ 0,1205 |
+
+A coluna da direita é a que importa: não é só a invocação longa que custa mais no total — cada
+turno dela custa mais, porque carrega mais contexto.
+
+O `rtk` (Rust Token Killer) é **opcional** — os hooks degradam em silêncio se o binário não
+estiver instalado, e nada quebra. Seja honesto sobre o ganho: no perfil de comandos medido
+neste repositório ele cortou **~4,5%** do volume de Bash, longe dos "60–90%" anunciados pela
+ferramenta. O ganho maior vem das regras de briefing dos próprios agentes (usar
+`Grep`/`Glob`/`Read` em vez de `grep`/`find`/`cat`, filtrar na fonte), não do proxy.
+
+## Desenvolvimento
+
+Para rodar os testes do hook que decide quando o `tester` é obrigatório:
 
 ```bash
-# o install.sh divulgado (rtk-ai.app/install.sh) responde 404 — não use `curl | bash`
-V=0.47.0
-curl -sSLO https://github.com/rtk-ai/rtk/releases/download/v$V/rtk-x86_64-unknown-linux-musl.tar.gz
-curl -sSLO https://github.com/rtk-ai/rtk/releases/download/v$V/checksums.txt
-sha256sum --check --ignore-missing checksums.txt        # confira antes de instalar
-tar -xzf rtk-x86_64-unknown-linux-musl.tar.gz
-install -m 755 rtk ~/.local/bin/rtk                     # ou aponte FORGE_RTK_BIN
+python3 plugins/forge/hooks/tests/test_require_tester.py
 ```
 
-**A delegação é restrita a uma lista fechada** (`RTK_OK` no hook): `git status|diff|show|
-branch`, `find`, `ls`, `tree`, e os verificadores — `playwright`, `pytest`, `vitest`, `jest`,
-`tsc`, `ruff`, `eslint`, inclusive nas formas que o Forge usa de fato (`pnpm exec …`,
-`npx …`, `uv run …`, `python3 -m …`). Só leitura e verificação, e cada variante `rtk ...` está
-liberada na allowlist do `settings.json`.
+Além dos testes de hook, o plugin traz uma suíte de avaliação de **comportamento** em `plugins/forge/evals/` — três casos que verificam o que instrução em markdown não consegue garantir sozinha: que um pedido de comando AWS destrutivo não é executado, que a conta é confirmada antes de agir, e que uma investigação não vira loop de escrever código. Rode com `claude plugin eval` (custa tokens: cada caso é uma execução de modelo). `claude plugin validate .` faz a checagem estática de schema, sem custo.
 
-O motivo da restrição é de segurança, não de gosto: a reescrita acontece **antes** da checagem
-de permissão, então ela troca o comando que as regras de `permissions` vão avaliar. Com o rtk
-reescrevendo livremente, `git push` virava `rtk git push` e **deixava de casar com a regra `ask`
-`Bash(git push:*)`** — furando a imposição do Invariante 2 — e `cat`/`ls`/`find` saíam da
-allowlist, o que geraria prompt de permissão em cada comando do loop.
+São 15 casos, cada um construído a partir de um payload real de `PostToolUse` capturado na
+CLI, com o miolo (`subagent_type` e o texto de retorno do `dev`) trocado por cenário.
 
-Quanto isso rende, medido rodando o hook do rtk sobre **os 7.127 comandos Bash reais** dos
-transcripts: ele *toca* 55,5% do volume, mas a economia é **5,4% do Bash ≈ 3,3% do que os
-subagentes ingerem ≈ US$ 40**. A razão de a cobertura alta render pouco: o volume que ele toca
-é dominado por `rtk read` (1,7 mi chars) e `rtk grep` (0,8 mi), que no nível padrão devolvem
-saída **idêntica** — o nível que comprime de verdade (`aggressive`) troca corpos de função por
-`// ... implementation`, inútil para quem vai editar o arquivo.
+O histórico de decisões e as medições que originaram esta ferramenta — os 35 transcritos
+analisados, a simulação de custo por teto de turno, os experimentos de paralelismo — vivem no
+repositório de origem, `forge-claude`.
 
-E os "60–99%" que ele anuncia em test runner são reais — só não têm onde incidir aqui. O `dev`
-roda muito teste (234 chamadas de playwright, 229 de tsc, 85 de pytest), mas o output médio já
-é de ~600 a 1.400 chars, porque o Invariante 6 **já manda filtrar na fonte** (`| tail -30`).
-O RTK chega para colher um ganho que o próprio design do Forge já colheu. Ele continua na
-lista porque é risco zero e porque, se o ciclo de teste crescer, o filtro já está no lugar.
+## O que ainda não foi verificado
 
-## Verificado em sessão real
-
-Os hooks foram exercitados numa sessão real do Forge (`claude -p`, CLI 2.1.260), não só contra
-payloads sintéticos:
-
-- o `dev` **escreve** código (o hook de papéis o libera pelo `agent_type` do payload) e o
-  orquestrador continua bloqueado;
-- o contador de turnos registra por `agent_id`;
-- o lembrete de validação **chega** ao orquestrador — ele o citou textualmente quando
-  perguntado;
-- despachado um `dev` de UI sem nenhuma instrução extra, o orquestrador **invocou o `tester`**,
-  que devolveu veredito. O ciclo que estava quebrado voltou a fechar.
-
-Três coisas só apareceram por medir, e todas contrariavam a intuição: a invocação de subagente
-é **assíncrona** (o `PostToolUse(Agent)` dispara no lançamento, com
-`tool_response: {"isAsync": true}` — o retorno do `dev` não passa por ali); o
-`SubagentStop` tem o retorno em `last_assistant_message`, mas seu `additionalContext` **não é
-injetado** no orquestrador e o evento dispara várias vezes por invocação; e `Write`/`Edit` não
-estão na allowlist, então em modo headless (`-p`) o `dev` é negado por permissão — o que se
-parece com um hook quebrado e não é.
-
-## Medindo o próprio custo
-
-O Forge traz a régua junto:
-
-```bash
-bin/forge-tokens                     # onde o token foi gasto, em todas as sessões
-bin/forge-tokens --desde 2026-09-04  # só depois de uma data — para comparar antes/depois
-bin/forge-tokens --json              # para script
-```
-
-Ele lê os transcripts (`~/.claude/projects/*/subagents/*.jsonl`) e reporta orquestrador vs
-subagentes, custo por tipo de subagente e a curva de custo por faixa de turnos. Todo número
-deste README saiu dele — e você pode refazer a conta a qualquer momento em vez de confiar na
-promessa de quem vende a otimização.
-
-## Ajustando o orçamento de turnos
-
-Cada papel tem teto próprio, calibrado pela **mediana de chamadas de ferramenta que ele
-gastou de verdade** nos transcripts. Teto abaixo da mediana estrangula o agente e gera
-retrabalho — que é o desperdício mais caro que existe:
-
-| agente | mediana medida | teto | variável |
-|---|---|---|---|
-| `scout` | 6 | 40 | `FORGE_SCOUT_CAP` |
-| `dev` | 42 | **35** | `FORGE_TURN_CAP` |
-| `tester` | 54 | 65 | `FORGE_TESTER_CAP` |
-| `forge-visual:visual-tester` | 43 | 70 | `FORGE_VISUAL_TESTER_CAP` |
-| `forge-visual:visual-dev` | 99 | 130 | `FORGE_VISUAL_CAP` |
-| outros (`general-purpose`, `Explore`, plugins) | 27 | 40 | `FORGE_OUTRO_CAP` |
-
-O `dev` é o único **abaixo** da mediana, e isso é deliberado: é ali que está a alavanca, e o
-`PARCIAL` existe para que cortar não signifique perder trabalho. 35 chamadas (≈60 turnos) é o
-ponto conservador — vale ~58% da conta de subagentes pela simulação. Apertar para 26 valeria
-~76%, mas corta bem acima da mediana; aperte com `FORGE_TURN_CAP` depois de ver o efeito no
-`bin/forge-tokens`.
-
-A conversão é a razão medida aqui: **1,73 turno por chamada de ferramenta**.
-
-## Roadmap
-
-- Agentes especializados: `quicksight`, `pentest-web`, `frontend-designer`
-- Pipeline de EPICs (planner → decomposer → coder) com worktree por EPIC
-- Paralelismo real entre EPICs via `claude --bg` + `claude agents`
-
----
-
-## Licença
-
-[MIT](LICENSE) © Matheus Ribeiro
-
----
-
-<div align="center">
-<sub>Construído com <a href="https://claude.com/claude-code">Claude Code</a>.</sub>
-</div>
+O `tester` em modo `browser` declara as ferramentas do `claude-in-chrome` numa lista restrita
+de `tools` no frontmatter do agente. Isso **ainda não foi provado em execução**. Se você
+invocar o `tester` em modo `browser` e ele reportar que não enxerga nenhuma ferramenta
+`mcp__claude-in-chrome__*`, a correção documentada é: omita o campo `tools` inteiro do
+frontmatter de `plugins/forge/agents/tester.md` — sem ele, o subagente herda todas as
+ferramentas da sessão, incluindo as do MCP.
