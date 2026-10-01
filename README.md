@@ -196,16 +196,24 @@ ferramenta. O ganho maior vem das regras de briefing dos próprios agentes (usar
 
 ## Desenvolvimento
 
-Para rodar os testes do hook que decide quando o `tester` é obrigatório:
+Para rodar os testes dos hooks (stdlib, um script por hook):
 
 ```bash
-python3 plugins/forge/hooks/tests/test_require_tester.py
+for t in plugins/forge/hooks/tests/test_*.py; do python3 "$t"; done
 ```
+
+Hooks do plugin com teste: `require-tester.py` (quando o `tester` é obrigatório),
+`delega-varredura.py` (lembrete de delegar ao `scout`), `deny-orchestrator-code-edits.sh`
+(orquestrador não escreve código) e `volta-pasta-base.py` (devolve o shell da sessão principal
+à pasta base do projeto, compondo com o `rtk-root.sh`).
 
 Além dos testes de hook, o plugin traz uma suíte de avaliação de **comportamento** em `plugins/forge/evals/` — casos que verificam o que instrução em markdown não consegue garantir sozinha, como o de que uma investigação não vira loop de escrever código. Rode com `claude plugin eval` (custa tokens: cada caso é uma execução de modelo). `claude plugin validate .` faz a checagem estática de schema, sem custo.
 
-São 15 casos, cada um construído a partir de um payload real de `PostToolUse` capturado na
-CLI, com o miolo (`subagent_type` e o texto de retorno do `dev`) trocado por cenário.
+Os quatro scripts de teste de hook (`test_require_tester.py`, `test_delega_varredura.py`,
+`test_deny_orchestrator.py` e `test_volta_pasta_base.py`) somam 44 casos. Os 15 de
+`test_require_tester.py` são construídos a partir de payloads reais de `PostToolUse`
+capturados na CLI, com o miolo (`subagent_type` e o texto de retorno do `dev`) trocado por
+cenário.
 
 O histórico de decisões e as medições que originaram esta ferramenta — os 35 transcritos
 analisados, a simulação de custo por teto de turno, os experimentos de paralelismo — vivem no
@@ -213,9 +221,10 @@ repositório de origem, `forge-claude`.
 
 ## O que ainda não foi verificado
 
-O `tester` em modo `browser` declara as ferramentas do `claude-in-chrome` numa lista restrita
-de `tools` no frontmatter do agente. Isso **ainda não foi provado em execução**. Se você
-invocar o `tester` em modo `browser` e ele reportar que não enxerga nenhuma ferramenta
-`mcp__claude-in-chrome__*`, a correção documentada é: omita o campo `tools` inteiro do
-frontmatter de `plugins/forge/agents/tester.md` — sem ele, o subagente herda todas as
-ferramentas da sessão, incluindo as do MCP.
+O `tester` em modo `browser` depende das ferramentas do `claude-in-chrome`. O frontmatter de
+`plugins/forge/agents/tester.md` já **omite** o campo `tools` (só `name`, `description` e
+`model`), então o subagente herda as ferramentas da sessão, incluindo as do MCP. Que isso
+entrega o navegador ao `tester` **ainda não foi provado em execução**. Se ele reportar que não
+enxerga nenhuma ferramenta `mcp__claude-in-chrome__*`, a alternativa ainda não verificada é
+declarar uma lista restrita de `tools` no frontmatter — que a documentação oficial não
+exemplifica para ferramentas de MCP.

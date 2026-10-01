@@ -50,6 +50,7 @@ Rode as suítes do plugin, se estiverem acessíveis:
 
 ```
 python3 ${CLAUDE_PLUGIN_ROOT}/hooks/tests/test_require_tester.py
+python3 ${CLAUDE_PLUGIN_ROOT}/hooks/tests/test_volta_pasta_base.py
 ```
 
 Reporte o resultado real. **Se não conseguir rodar, diga que não conseguiu verificar** — não

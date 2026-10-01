@@ -64,7 +64,7 @@ Os tetos são calibrados pela mediana real de chamadas de ferramenta que cada pa
 - Uma medição anterior deste mesmo período circulou com números inflados: ela contava turnos sem deduplicar por `message.id`, e o Claude Code grava a mesma mensagem várias vezes no transcript (8.883 de 11.859 mensagens aparecem repetidas). O fator era exatamente 2,00x, e a distribuição por faixa saía deslocada para cima. Os números deste documento são os corrigidos, medidos com `plugins/forge/bin/forge-tokens`; a linha de base completa está em `docs/linha-de-base.md`.
 - As métricas vêm de uma pessoa só, em 20 dias, e descrevem o comportamento **anterior** às mudanças do plugin — nada foi medido depois do teto de turnos e dos demais hooks em produção.
 - O `tester` em modo `browser` depende de ferramentas que vêm de um servidor MCP. O plugin usa o único caminho que a documentação oficial garante — o agente não declara `tools`, e assim herda as ferramentas MCP da sessão. Falta confirmar em uso real que isso entrega o navegador a ele; o comando `/forge:doctor` faz essa verificação e diz o que fazer em cada desfecho. Enquanto não for confirmado, o modo `contrato` (sem navegador) funciona normalmente.
-- A suíte de avaliação automatizada do plugin ainda não foi escrita; hoje existe só um conjunto de testes unitários para um dos hooks.
+- A suíte de avaliação automatizada do plugin ainda é mínima: `plugins/forge/evals/` tem 1 caso (`investigacao-nao-vira-codigo`, com `prompt.md` e 3 graders). Os hooks têm 4 scripts de teste unitário, com 44 casos no total.
 
 ## Como adotar
 

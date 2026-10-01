@@ -21,13 +21,14 @@ tenha.
 ## Bloco canônico de permissions
 
 Fonte: `.claude/settings.json` do repo de referência do Forge (41 `allow` / 6 `ask` /
-`deny` vazio). O `ask` cobre operações destrutivas ou de rede que exigem confirmação
+3 `deny`). O `ask` cobre operações destrutivas ou de rede que exigem confirmação
 explícita (`git push`, `rm -r` e variantes, `killall`). O `allow` libera leitura, git de
 baixo risco, gerenciadores de pacote e as variantes `rtk` (opcional — só fazem sentido se
-`rtk` estiver no `PATH`). O `deny` vem vazio de propósito: a regra de **não fazer deploy nem
-`push` por conta própria** é genérica e vive no invariante 2 do `CLAUDE.md` (skill
-`no-deploy-no-push`), não numa lista de comandos de um provedor específico. Quem quiser
-bloquear comandos próprios do seu stack adiciona as regras em `deny` — o algoritmo de merge
+`rtk` estiver no `PATH`). O `deny` traz só o mínimo genérico: `git push` forçado (`--force`, `-f`,
+`--force-with-lease`). A regra de **não fazer deploy nem `push` por conta própria** vive no
+invariante 2 do `CLAUDE.md` (skill `no-deploy-no-push`), não numa lista de comandos de um
+provedor específico. Quem quiser bloquear comandos próprios do seu stack adiciona as regras
+em `deny` — o algoritmo de merge
 abaixo nunca remove o que já está lá.
 
 **Por que `ask` e não `allow` no que é destrutivo**: `git push` e `rm -r` não têm volta
@@ -88,7 +89,11 @@ fácil; a ferramenta precisa parar e pedir confirmação em vez de executar sozi
       "Bash(rm -fr:*)",
       "Bash(rm -fR:*)"
     ],
-    "deny": []
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push --force-with-lease*)"
+    ]
   }
 }
 ```
