@@ -26,7 +26,7 @@ description: Use ao encontrar um erro de execução ou ao usar uma tecnologia/li
 "Cannot find module 'better-sqlite3' tsx 2026"
 "pnpm install EACCES permission denied 2026"
 "playwright chromium not found linux 2026"
-"aws lambda timeout error python 2026"
+"cloud function timeout error python 2026"
 "tsc error TS2307 cannot find module 2026"
 ```
 
@@ -43,17 +43,17 @@ description: Use ao encontrar um erro de execução ou ao usar uma tecnologia/li
 
 #### Como identificar esse gatilho:
 - Vai usar uma lib que não está no package.json/requirements.txt do projeto
-- Vai integrar com um serviço externo (AWS, Stripe, Twilio, etc.)
-- Vai usar um recurso avançado de uma lib (ex: DuckDB com Iceberg, Lambda com container)
-- Vai configurar algo de infraestrutura (Docker, CDK, Terraform)
+- Vai integrar com um serviço externo (uma API de pagamento, Twilio, um provedor de nuvem, etc.)
+- Vai usar um recurso avançado de uma lib (ex: DuckDB com Iceberg, função sem servidor com container)
+- Vai configurar algo de infraestrutura (Docker, uma ferramenta de IaC)
 
 **Exemplos de queries:**
 ```
-"como usar DuckDB com AWS Lambda 2026"
-"DuckDB Iceberg S3 Python Lambda 2026"
+"como usar DuckDB em função sem servidor 2026"
+"DuckDB Iceberg object storage Python 2026"
 "better-sqlite3 Express TypeScript setup 2026"
 "Playwright headless Linux CI 2026"
-"AWS CDK Python Lambda container image 2026"
+"ferramenta de IaC Python função sem servidor container image 2026"
 "React Query v5 setup Vite 2026"
 ```
 

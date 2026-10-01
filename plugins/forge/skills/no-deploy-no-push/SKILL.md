@@ -8,12 +8,7 @@ description: Use antes de qualquer deploy, git push ou criação de repositório
 ## ⛔ NUNCA FAZER por conta própria (sem o usuário mandar explicitamente)
 
 ### Deploy
-- **NUNCA** executar `cdk deploy`, `cdk destroy` por iniciativa própria
-- **NUNCA** executar `terraform apply`, `terraform destroy` por iniciativa própria
-- **NUNCA** executar `aws` CLI que crie, modifique ou delete recursos (S3, EC2, Lambda, IAM, RDS, etc.) por iniciativa própria
-- **NUNCA** executar `serverless deploy`, `sam deploy` por iniciativa própria
-- **NUNCA** executar `docker push` para registries remotos por iniciativa própria
-- **NUNCA** executar `kubectl apply` em clusters remotos por iniciativa própria
+- **NUNCA** executar deploy de qualquer tipo por iniciativa própria: infraestrutura como código (apply, deploy, destroy), container (push para registry remoto), funções sem servidor, comandos de CLI de cloud que criem, modifiquem ou apaguem recursos, ou aplicação em cluster remoto
 
 ### Git Push
 - **NUNCA** executar `git push` por iniciativa própria (nenhuma variação: `--force`, `--tags`, nada)
@@ -24,7 +19,7 @@ Se o usuário disser **"faça o push"**, **"faça o deploy"**, **"faça commit, 
 
 Exemplos de comandos explícitos que autorizam a ação:
 - "Faça o push" → executa `git push`
-- "Faça o deploy" → executa `cdk deploy`
+- "Faça o deploy" → executa o deploy do projeto
 - "Faça commit, push e deploy" → executa os três em sequência
 
 ## ⛔ NUNCA commitar arquivos desnecessários
@@ -83,10 +78,10 @@ git log --oneline -5
 ```
 
 ### Deploy — Sempre mostrar diff antes
-- Criar arquivos de configuração (Dockerfile, CDK stacks, terraform files) → OK
+- Criar arquivos de configuração (Dockerfile, arquivos de infraestrutura como código) → OK
 - Rodar `docker build` localmente → OK
 - Gerar artefatos de build (`pnpm build`, `npm run build`) → OK
-- Rodar `cdk diff` / `terraform plan` → OK (apenas leitura)
+- Rodar o diff/plano da ferramenta de IaC (apenas leitura) → OK
 
 ## ✅ OBRIGATÓRIO: Mostrar diff antes de deploy
 
@@ -97,13 +92,10 @@ git diff --staged
 git log --oneline -5
 ```
 
-### AWS diff
-```bash
-cdk diff <StackName>   # mostra o que seria criado/alterado/deletado na AWS
-terraform plan         # mostra plano de execução
-```
+### Diff de infraestrutura
+Use o comando de diff/plano da sua ferramenta de IaC: ele mostra o que seria criado, alterado ou deletado, sem aplicar nada.
 
-### Fluxo obrigatório quando há infra AWS
+### Fluxo obrigatório quando há infraestrutura
 1. Fazer as alterações no código
-2. Rodar `cdk diff` ou `terraform plan` e mostrar ao usuário
+2. Rodar o diff/plano da ferramenta de IaC e mostrar ao usuário
 3. Aguardar o usuário mandar executar o deploy

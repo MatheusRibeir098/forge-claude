@@ -16,8 +16,9 @@ nunca justificam escrita.
 
 Toda query exploratória (descobrir schema, ver amostra de dados, checar
 distribuição) leva `LIMIT`. Isso protege terminal e contexto de output
-gigante — mas não confunda com economia de custo: em Athena/Glue, `LIMIT` não
-reduz bytes escaneados (ver `custo-query-aws`).
+gigante — mas não confunda com economia de custo: em bancos ou data lakes
+cobrados por volume escaneado, `LIMIT` pode não
+reduzir o custo da query.
 
 ## PII e dado sensível
 
@@ -36,7 +37,7 @@ Quando o acesso passa por um **MCP com tool já restrita a SELECT**, a rede de
 proteção contra escrita acidental já existe no servidor — o cuidado aqui é só
 com volume de dado exposto.
 
-Em **acesso direto** (`psql`, Athena manual, `aws rds execute-statement`,
+Em **acesso direto** (`psql`, cliente de data lake manual,
 clientes de banco via linha de comando) **essa rede não existe**: nada impede
 um `DELETE` sem `WHERE` ou um `SELECT *` sem `LIMIT`. Nesses casos, a
 disciplina de leitura segura é inteiramente manual — revise a query antes de

@@ -124,10 +124,10 @@ Tarefa de MCP server, CLI, API, YAML, schema, infra. **Zero prints.**
 - **Chame as tools de verdade.** Suba o servidor MCP em **stdio** e invoque as tools com
   **payload real**, conferindo a resposta. Ler o código e concluir que está certo **não é
   validação** — é o que o `dev` já fez.
-- **AWS CLI somente de leitura.** `describe-*`, `list-*`, `get-*` são permitidos — o usuário
-  autorizou explicitamente — para conferir se o que foi aplicado bate com o esperado.
-  **Proibido** qualquer verbo que escreva: `create-*`, `update-*`, `delete-*`, `put-*`. E
-  proibido `cdk deploy`, `terraform apply`, `sam deploy`.
+- **CLI de nuvem somente de leitura.** Comandos de leitura (`describe`, `list`, `get`) são
+  permitidos — o usuário autorizou explicitamente — para conferir se o que foi aplicado bate
+  com o esperado. **Proibido** qualquer verbo que escreva (`create`, `update`, `delete`,
+  `put`). E proibido aplicar ou implantar infraestrutura (apply, deploy).
 - **Rode a suíte completa do pacote tocado**, não só o teste que o `dev` escreveu — é
   justamente o teste dele que não prova nada sozinho.
 - **Confira contra o critério de aceite** da tarefa em `.forge/tasks.md`, não contra a

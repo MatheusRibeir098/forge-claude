@@ -13,25 +13,11 @@ Todo agente DEVE verificar antes de executar:
    - Se não → PARE. Não execute.
    - Cada agente trabalha APENAS na sua pasta designada.
 
-2. **A ação modifica infraestrutura real (AWS, banco de dados, DNS, IAM)?**
+2. **A ação modifica infraestrutura real (banco de dados, DNS, cloud, permissões)?**
    - Se sim → confirme com o usuário antes de executar.
-   - `cdk deploy/destroy`, `terraform apply/destroy` e o `aws` CLI destrutivo/de identidade já
-     são bloqueados por `permissions` (`deny`, skill `setup-blocos`); o resto do `aws` CLI segue a
-     skill `aws-operacoes-seguras`.
 
 3. **A ação é irreversível?**
-   - Deleção de recursos, drop de tabelas, remoção de buckets S3 → SEMPRE confirmar.
-
----
-
-## AWS — Regras Específicas
-
-- **Nunca** hardcodar credenciais, access keys ou secrets em código
-- **Nunca** usar `*` em IAM policies — sempre least privilege
-- Secrets vão no Secrets Manager ou Parameter Store, nunca em variáveis de ambiente no código
-- Recursos devem ter tag `Environment` (dev/staging/prod) — nunca criar recurso sem saber o ambiente alvo
-- Antes de criar qualquer recurso AWS, verificar se já existe um equivalente para evitar duplicação
-- Qualquer comando `aws` CLI ou MCP AWS → skill `aws-operacoes-seguras`
+   - Deleção de recursos, drop de tabelas, remoção de buckets ou volumes → SEMPRE confirmar.
 
 ---
 

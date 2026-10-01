@@ -46,19 +46,19 @@ description: Use ao decidir o escopo de testes de uma mudança — teste o que m
 - ❌ Fazer grep/contagem de imports como "teste"
 - ❌ Verificar arquivos que não foram tocados
 - ❌ Declarar API OK sem testar CORS preflight OPTIONS
-- ❌ Declarar Lambda OK sem verificar estrutura do ZIP
+- ❌ Declarar função em nuvem OK sem verificar a estrutura do pacote
 - ❌ Declarar testes passando usando NODE_ENV=test (bypassa auth real)
 - ❌ Declarar E2E OK sem chegar na funcionalidade principal
 - ❌ Testar fluxo com banco/dados vazio
 
 ---
 
-## Pirâmide de testes para projetos com deploy AWS
+## Pirâmide de testes para projetos com deploy em nuvem
 
 ```
         E2E contra produção (claude-in-chrome)
        ───────────────────────────────────────
-      Integração real (token Cognito + AWS)
+      Integração real (autenticação real + serviços de nuvem)
      ─────────────────────────────────────
     API local (Supertest, NODE_ENV=test)
    ───────────────────────────────────────

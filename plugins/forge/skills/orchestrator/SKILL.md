@@ -243,7 +243,7 @@ O `tester` valida **apenas** o que a tarefa implementou. O hook já injetou o mo
   dados em desktop e o estado de erro"*; teto duro do `tester` é 5). Print custa ~1% do loop —
   o teto é foco, não economia.
 - **Modo `contrato`**: **quais tools do MCP chamar e com que payload** (real, não simulado),
-  quais comandos read-only rodar (`aws describe/list`, suíte completa), e **qual critério de
+  quais comandos read-only rodar (comando de leitura da sua nuvem, suíte completa), e **qual critério de
   aceite do `tasks.md`** conferir — contra o aceite, não contra a intenção declarada pelo
   `dev`. Zero prints: aqui imagem não prova nada.
 - **Skills a consultar**: 1–2, como no briefing do `dev`.

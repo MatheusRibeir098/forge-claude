@@ -67,14 +67,12 @@ Para pedidos que terminam em **resposta**, não em código: incidente em produç
 banco/data lake, análise de custo, revisão de infraestrutura existente, mapeamento de
 repositório. **Read-only por padrão** — não abre o loop `dev`→`tester`.
 
-1. **Antes de tocar qualquer conta AWS**: confirme conta/perfil/região ativos (skill
-   `aws-operacoes-seguras`). Vale para os três fluxos, mas é aqui que mais aparece — nunca
+1. **Antes de tocar qualquer conta de nuvem ou ambiente remoto**: confirme conta/perfil/região
+   ativos. Vale para os três fluxos, mas é aqui que mais aparece — nunca
    assuma o perfil certo.
 2. **O `scout` é o papel principal**, não o `dev`. Dispare quantos `scout` fizerem sentido,
    todos na mesma mensagem — são só-leitura e nunca colidem (skill `orchestrator`). Cite,
-   conforme o caso: `investigacao-incidente-aws` (incidente em produção),
-   `banco-de-dados-leitura-segura` (consulta a banco/data lake), `custo-query-aws` (antes de
-   query Athena/Glue cara) e `aws-iac-diff-review` (revisar infraestrutura existente).
+   conforme o caso: `banco-de-dados-leitura-segura` (consulta a banco/data lake).
 3. **Correlacione o retorno dos `scout`** e monte a entrega: **um arquivo único**,
    `projects/<nome>/.forge/investigacao-<AAAA-MM-DD>.md` — **não** `tasks.md`. Não force
    backlog de tarefas atômicas numa entrega que não é código.
