@@ -1,0 +1,16 @@
+# estado transitório e artefatos locais
+*.log
+.DS_Store
+.idea/
+.vscode/
+__pycache__/
+
+# Config local desta máquina (fábrica que usa o plugin) — não faz parte do plugin
+/CLAUDE.md
+/.claude/
+/projects/
+
+# Controle local da fábrica (planos, rascunhos, logs de sessões do Forge)
+/.forge/
+# Base local da fábrica criada pelo /forge:setup (cópia de plugins/forge/templates/)
+/templates/
