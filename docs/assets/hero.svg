@@ -1,0 +1,95 @@
+<!--
+Linha do tempo (hero.svg):
+  0.0 a 0.6 s : titulo e bigorna surgem por fade; faiscas ja em loop (sobem 60-130 px e somem)
+  0.6 a 3.2 s : subtitulo digitado (55 caracteres, steps(55)); cursor acompanha
+  1.0 a 2.8 s : primeiro brilho varre o titulo (repete a cada 6 s: 7.0-8.8 s, 13.0-14.8 s)
+  3.4 a 4.2 s : linha final surge por fade
+  apos 3.2 s  : cursor pisca indefinidamente; brasa respira em ciclo de 4 s (pico em 2 s, 6 s...)
+  t=1 s: titulo, digitando (aprox. 4 caracteres) | t=4 s: tudo visivel, cursor piscando
+  t=8 s: tudo visivel, brilho no titulo | t=13 s: tudo visivel, inicio do brilho
+  Movimento reduzido: imagem final parada, sem cursor, 4 faiscas esmaecidas.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="240" viewBox="0 0 880 240" role="img" aria-label="Forge, plugin para o Claude Code. Você conversa com o orquestrador. Ele coordena o resto." font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif">
+  <title>Forge, plugin para o Claude Code: você conversa com o orquestrador e ele coordena o resto</title>
+  <style>
+    .glow { animation: breathe 4s ease-in-out infinite; }
+    .in { animation: fadein .6s ease-out backwards; }
+    .shine { animation: sweep 6s ease-in-out 1s infinite; }
+    .sp { opacity: 0; animation-name: rise; animation-timing-function: ease-out; animation-iteration-count: infinite; }
+    .cover { animation: reveal 2.6s steps(55, end) 0.6s both; }
+    .curmove { animation: reveal 2.6s steps(55, end) 0.6s both; }
+    .cur { animation: blink 1s steps(1, end) 3.2s infinite; }
+    .tag { animation: fadein .8s ease-out 3.4000000000000004s backwards; }
+    @keyframes breathe { 0%, 100% { opacity: .18; } 50% { opacity: .32; } }
+    @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes sweep { 0% { transform: translateX(0); } 30%, 100% { transform: translateX(300px); } }
+    @keyframes rise {
+      0% { opacity: 0; transform: translate(0, 0); }
+      12% { opacity: 1; }
+      60% { opacity: .8; }
+      100% { opacity: 0; transform: translate(var(--dx), var(--dy)); }
+    }
+    @keyframes reveal { from { transform: translateX(-660px); } to { transform: translateX(0); } }
+    @keyframes blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before { animation: none !important; }
+      .cur { opacity: 0; }
+      .sp.pk { opacity: .45; transform: translate(var(--dx), var(--dy)); }
+    }
+  </style>
+  <defs>
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="240">
+      <stop offset="0" stop-color="#0D1117"/>
+      <stop offset="1" stop-color="#1B1209"/>
+    </linearGradient>
+    <radialGradient id="ember" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1" gradientTransform="translate(440 250) scale(400 140)">
+      <stop offset="0" stop-color="#F97316" stop-opacity="1"/>
+      <stop offset="1" stop-color="#F97316" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fire" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FBBF24"/>
+      <stop offset="1" stop-color="#F97316"/>
+    </linearGradient>
+    <linearGradient id="shineGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#FFFFFF" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="titleMask" maskUnits="userSpaceOnUse" x="0" y="0" width="880" height="240">
+      <text x="382" y="136" font-size="72" font-weight="800" textLength="200" lengthAdjust="spacingAndGlyphs" fill="#FFFFFF">Forge</text>
+    </mask>
+  </defs>
+
+  <rect width="880" height="240" rx="16" fill="url(#bg)" stroke="#30363D"/>
+
+  <text x="110" y="188" font-size="20" fill="#E6EDF3" textLength="660" lengthAdjust="spacingAndGlyphs">Você conversa com o orquestrador. Ele coordena o resto.</text>
+  <rect class="cover" x="770" y="166" width="680" height="34" fill="url(#bg)"/>
+  <g class="curmove"><rect class="cur" x="770" y="168" width="10" height="26" fill="#F97316"/></g>
+
+  <ellipse class="glow" cx="440" cy="250" rx="400" ry="140" fill="url(#ember)" opacity=".25"/>
+
+  <g class="in">
+    <path transform="translate(298 90)" fill="url(#fire)" d="M2 8 C10 8 16 6 22 2 L64 2 L64 14 L52 14 C48 18 46 22 46 28 L46 34 L58 34 L58 46 L8 46 L8 34 L20 34 L20 28 C20 20 14 16 2 14 Z"/>
+    <text x="382" y="136" font-size="72" font-weight="800" textLength="200" lengthAdjust="spacingAndGlyphs" fill="url(#fire)">Forge</text>
+    <g mask="url(#titleMask)"><rect class="shine" x="312" y="70" width="64" height="80" fill="url(#shineGrad)"/></g>
+  </g>
+
+  <g>
+    <circle class="sp" cx="339" cy="94" r="2" fill="#FBBF24" style="--dx:-5px;--dy:-66px;animation-duration:2.5s;animation-delay:0.11s"/>
+    <circle class="sp pk" cx="339" cy="94" r="1.5" fill="#F97316" style="--dx:28px;--dy:-124px;animation-duration:2.7s;animation-delay:0.25s"/>
+    <circle class="sp" cx="342" cy="94" r="1.5" fill="#FBBF24" style="--dx:-15px;--dy:-71px;animation-duration:3.3s;animation-delay:0.47s"/>
+    <circle class="sp" cx="351" cy="94" r="1.5" fill="#F97316" style="--dx:30px;--dy:-88px;animation-duration:3.4s;animation-delay:0.81s"/>
+    <circle class="sp pk" cx="324" cy="94" r="3" fill="#FBBF24" style="--dx:-27px;--dy:-88px;animation-duration:2.5s;animation-delay:1.09s"/>
+    <circle class="sp" cx="336" cy="94" r="3" fill="#F97316" style="--dx:-21px;--dy:-129px;animation-duration:2.6s;animation-delay:1.21s"/>
+    <circle class="sp" cx="354" cy="94" r="2" fill="#FBBF24" style="--dx:-24px;--dy:-84px;animation-duration:3.0s;animation-delay:1.49s"/>
+    <circle class="sp" cx="327" cy="94" r="1.5" fill="#F97316" style="--dx:9px;--dy:-86px;animation-duration:3.2s;animation-delay:1.72s"/>
+    <circle class="sp pk" cx="339" cy="94" r="3" fill="#FBBF24" style="--dx:7px;--dy:-118px;animation-duration:3.0s;animation-delay:1.89s"/>
+    <circle class="sp" cx="330" cy="94" r="2" fill="#F97316" style="--dx:-25px;--dy:-98px;animation-duration:3.2s;animation-delay:2.25s"/>
+    <circle class="sp" cx="357" cy="94" r="3" fill="#FBBF24" style="--dx:-12px;--dy:-69px;animation-duration:2.6s;animation-delay:2.38s"/>
+    <circle class="sp pk" cx="339" cy="94" r="2" fill="#F97316" style="--dx:29px;--dy:-122px;animation-duration:3.1s;animation-delay:2.72s"/>
+    <circle class="sp" cx="327" cy="94" r="2.5" fill="#FBBF24" style="--dx:-9px;--dy:-104px;animation-duration:3.4s;animation-delay:2.88s"/>
+    <circle class="sp" cx="345" cy="94" r="1.5" fill="#F97316" style="--dx:23px;--dy:-71px;animation-duration:3.9s;animation-delay:3.08s"/>
+  </g>
+
+  <text class="tag" x="440" y="222" font-size="14" fill="#8B949E" text-anchor="middle" style="white-space:pre" xml:space="preserve">plugin para o Claude Code  ·  orquestrador  ·  dev  ·  tester  ·  scout</text>
+</svg>

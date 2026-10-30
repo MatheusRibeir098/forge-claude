@@ -1,220 +1,258 @@
-# Forge
+<p align="center">
+  <img src="docs/assets/hero.svg" width="100%" alt="Forge: você conversa com o orquestrador, ele coordena o resto">
+</p>
 
-Marketplace pessoal de plugins para o Claude Code. O plugin `forge` é uma fábrica de software
-movida a subagentes: você conversa com **um orquestrador**, que levanta requisitos, monta a
-spec, quebra o trabalho em tarefas e despacha `dev`, `tester` e `scout`. A divisão de papel
-não é convenção que o modelo pode esquecer no meio da conversa: é **imposta por hook**, e cada
-invocação de subagente tem um teto de turnos por papel, ajustável por variável de ambiente. O `forge-frontend` é um
-complemento opcional com skills de interface para o `dev`.
+<p align="center">
+  <img src="https://img.shields.io/badge/Claude_Code-plugin-F97316?style=flat-square" alt="Plugin do Claude Code">
+  <img src="https://img.shields.io/badge/licen%C3%A7a-MIT-3FB950?style=flat-square" alt="Licença MIT">
+  <img src="https://img.shields.io/badge/idioma-pt--BR-58A6FF?style=flat-square" alt="Idioma: português do Brasil">
+</p>
 
-## Início rápido
+<p align="center">
+  <a href="#o-que-é">O que é</a> ·
+  <a href="#como-funciona">Como funciona</a> ·
+  <a href="#os-três-jeitos-de-começar">Como começar</a> ·
+  <a href="#perguntas-frequentes">Perguntas</a> ·
+  <a href="#instalação"><b>Instalação</b></a>
+</p>
 
-Pré-requisitos:
+## O que é
 
-- Claude Code.
-- `python3` no `PATH` (os hooks usam; só biblioteca padrão).
-- `bash` (os hooks `.sh` exigem).
-- `git`, e `node` com `pnpm` se o `dev` for criar ou tocar projetos JavaScript.
-- Opcional: [`rtk`](https://github.com/rtk-ai/rtk), que comprime a saída de comandos (o
-  `/forge:setup` oferece instalar).
-- Opcional: a extensão `claude-in-chrome`, necessária só para o `tester` em modo `browser`.
+O Forge é um plugin para o [Claude Code](https://claude.com/claude-code) que transforma uma
+conversa em uma pequena equipe de software.
 
-Dentro do Claude Code:
+Você fala com **um único** agente, o **orquestrador**. Ele entende o pedido, divide o trabalho
+em tarefas e chama o especialista certo para cada uma. A mesma pessoa não faz tudo: quem
+escreve o código nunca é quem confere se ficou certo.
 
-```
-/plugin marketplace add MatheusRibeir098/forge-claude
-/plugin install forge@forge-claude
-/plugin install forge-frontend@forge-claude     # opcional, só para trabalho com interface
-```
-
-Depois, no repositório onde você vai trabalhar:
-
-```
-/forge:setup      # grava permissions e invariantes (mostra o diff e pede confirmação)
-/forge:doctor     # confere o ambiente; só lê, não altera nada
-/forge            # começa
-```
-
-Passo a passo de uso, com exemplos de pedido real: [`docs/tutorial.md`](docs/tutorial.md).
+> **Em uma frase:** é como um mestre de obras que não pega no martelo. Ele planeja e
+> distribui o trabalho, e só considera a obra entregue depois que o fiscal aprova.
 
 ## Como funciona
 
-### Os papéis
+<p align="center">
+  <img src="docs/assets/fluxo.svg" width="100%" alt="Diagrama animado: o pedido sai de você para o orquestrador, que consulta o scout, passa a tarefa ao dev, manda a entrega ao tester e só devolve para você depois do PASSOU">
+</p>
 
-| Papel | Modelo | Pode | Não pode |
-|---|---|---|---|
-| orquestrador (a sessão principal) | o da sessão | Levantar requisitos, escrever a spec, decompor, briefar, despachar e revisar | Escrever código de produto (só `.forge/**`, `prompt.md`, `*.md`; `templates/*` só na fábrica; fora da raiz do projeto, `*.log`, `*.patch` e similares também são livres) |
-| `dev` | sonnet | Escrever todo o código de produto; rodar `tsc`/build/lint e teste unitário (dali sai o `build_ok` que ele reporta) | Subir servidor, rodar browser/E2E, tirar screenshot ou bater na app por HTTP |
-| `tester` | sonnet | Validar a entrega e emitir o veredito (`PASSOU`/`FALHOU`/`BLOQUEADO`) | Escrever código de produto (o `Write` dele serve só para spec de teste e evidência) |
-| `scout` | haiku | Ler, varrer, pesquisar lib/API na web e mapear estrutura em volume; só o resumo volta ao orquestrador | Escrever ou editar arquivo, instalar dependência, alterar estado |
-
-O `tester` trabalha em dois modos:
-
-- **`browser`**: valida a UI no Chrome real via `claude-in-chrome`. Sempre serial e com teto
-  de 5 evidências visuais por tarefa.
-- **`contrato`**: sem navegador. Sobe o MCP server em stdio e chama as tools com payload
-  real, roda a suíte do pacote tocado, confere infraestrutura **só por leitura** e compara o
-  resultado com o critério de aceite.
-
-O hook `require-tester.py` lê o retorno estruturado do `dev` (arquivos alterados e comandos
-para subir) e recomenda o modo. O orquestrador decide e avisa em uma linha; não pergunta. O mesmo hook guarda
-a pendência de validação da sessão e trata o veredito do `tester`: `PASSOU` a limpa, `FALHOU` e
-`BLOQUEADO` a mantêm.
-
-### Comandos
-
-- `/forge`: hub. Cria um projeto do zero, entra no modo fix de um existente ou investiga algo
-  sem escrever código (incidente, banco, custo, infraestrutura). Também responde como
-  `/forge:forge`.
-- `/forge:new`: atalho direto para criar um projeto do zero.
-- `/forge:fix`: atalho direto para o modo fix/implementação de um projeto existente.
-- `/forge:setup`: prepara o repositório atual. Grava as `permissions` em
-  `.claude/settings.json` e os invariantes no `CLAUDE.md` (entre marcadores, então rodar de
-  novo atualiza em vez de duplicar). Oferece criar a fábrica, instalar o `rtk` e **perguntar**
-  se você quer um mapa local de credenciais em `~/.claude/skills/credenciais-ambiente/SKILL.md`
-  (perfis de nuvem de qualquer provedor, contas `gh`, tokens de API, service accounts; só
-  ponteiros, nunca o segredo). Nunca sobrescreve nada em silêncio.
-- `/forge:doctor`: diagnostica contexto, permissions, invariantes, hooks, `rtk` e se o
-  `tester` enxerga o navegador. Só lê.
-
-### Os dois jeitos de usar
-
-- **Fábrica**: uma pasta base com `projects/` dentro. Cada repositório em que você trabalha é
-  clonado para lá e você conversa sempre com **um** orquestrador, na raiz da base. Projeto
-  novo nasce em `projects/<nome>/`, com git próprio. O `/forge:setup` cria a pasta.
-- **Repo atual**: o plugin instalado e `/forge` rodado dentro do repositório onde você já
-  trabalha; o controle fica em `.forge/` na raiz dele.
-
-A detecção é automática: é fábrica quando a raiz tem `projects/` **e**
-`templates/prompt.template.md`; qualquer outro caso é repo atual.
-
-Abra a sessão sempre na raiz, da fábrica ou do repositório preparado. Nunca direto dentro de
-`projects/<nome>/`: esse diretório não tem o `CLAUDE.md` nem as `permissions` do Forge, e não
-há garantia de que os hooks disparem ali.
-
-### Hooks
-
-Definidos em `plugins/forge/hooks/hooks.json`. Os scripts `.sh` são chamados via `bash` e o
-`.py` via `python3`, sem depender de bit de execução.
-
-| Hook | Evento | O que faz |
+| Quem | O que faz | Pense nele como |
 |---|---|---|
-| `deny-orchestrator-code-edits.sh` | PreToolUse `Write\|Edit` | Bloqueia o orquestrador de escrever código de produto; subagentes escrevem livremente |
-| `subagent-turn-budget.sh` | PreToolUse e PostToolUse | Conta as chamadas de ferramenta de cada subagente, avisa e depois nega no teto do papel; nega ao `dev` subir servidor, browser, screenshot ou `curl` local; delega Bash de leitura ao `rtk` quando ele existe |
-| `volta-pasta-base.py` | PreToolUse `Bash` | Na sessão principal, se a cwd do shell divergir de `CLAUDE_PROJECT_DIR`, reescreve o comando com `cd "<raiz>" &&` e avisa |
-| `rtk-root.sh` | PreToolUse `Bash` | Na sessão principal, encadeia o `rtk` (opcional); é o único escritor de `updatedInput` quando a cwd está na raiz |
-| `require-tester.py` | PostToolUse `Agent` | Ao fim de cada `dev`, decide se o `tester` é obrigatório e em qual modo, pelo retorno estruturado dele; também guarda a pendência de validação e trata os vereditos do `tester` |
-| `delega-varredura.py` | PostToolUse | Conta leituras consecutivas do orquestrador (inclusive chamadas MCP) e, a partir de 8 (`FORGE_LEITURA_LIMIAR`), lembra de delegar ao `scout` |
-| `deny-orchestrator-bash-writes.py` | PreToolUse `Bash` | Barra a escrita de código pela sessão principal via Bash, com as mesmas regras de caminho do `Write\|Edit` |
-| `git-identidade-local.py` | PreToolUse `Bash` | Nega `git commit` em repo sem `user.email` local |
+| **Orquestrador** | Conversa com você, escreve a spec, divide em tarefas e distribui. Não escreve código. | o mestre de obras |
+| **`dev`** | Escreve todo o código e roda build e testes unitários. | o construtor |
+| **`tester`** | Confere a entrega no navegador real ou por contrato (API, CLI, MCP server, infra) e dá o veredito: `PASSOU`, `FALHOU` ou `BLOQUEADO`. | o fiscal |
+| **`scout`** | Lê, pesquisa e mapeia em volume, e volta só com o resumo. | o batedor |
 
-### Invariantes
+Se o `tester` reprova, a tarefa volta para o `dev` com o defeito descrito. O ciclo só fecha
+com `PASSOU`.
 
-O `/forge:setup` grava estes seis no `CLAUDE.md` do repositório (a fábrica ganha mais dois,
-sobre onde os projetos vivem):
+### As regras não dependem de boa vontade
 
-1. Não escreva código de produto; delegue ao `dev`.
-2. Nunca `git push` nem deploy de qualquer tipo (infra, container, serverless, cloud) por
-   conta própria; só sob ordem explícita. Antes de aplicar infra, mostre o diff ou plano.
-3. Commits em português do Brasil (prefixos convencionais em inglês são ok).
-4. Segurança de processos: confira processos ativos antes de matar ou reiniciar, pesquise
-   tecnologia nova incluindo o ano na busca, pergunte o perfil git se não foi especificado.
-5. Paralelize por padrão: o que for independente vai na mesma mensagem.
-6. Cada token reenviado é pago de novo: decomponha em tarefas pequenas, nomeie 1-2 skills por
-   briefing, prefira `Read` para arquivo conhecido e `command grep -rn`/`find` com filtro e limite para busca.
+<p align="center">
+  <img src="docs/assets/guarda.svg" width="100%" alt="Animação: o orquestrador tenta escrever um arquivo de código, o hook bloqueia e o pedido vira um briefing para o dev">
+</p>
 
-O `deny` das permissions é só o mínimo genérico (`git push --force`, `-f`,
-`--force-with-lease`); `git push` comum cai no `ask`. A regra de deploy vive no invariante 2,
-não numa lista de comandos de um provedor.
+Uma instrução escrita pode ser esquecida no meio de uma conversa longa. Por isso as regras
+que mais importam são **hooks**, scripts que o Claude Code roda antes e depois de cada ação:
 
-## Economia de token
+- se o orquestrador tenta escrever código, ele é **bloqueado** e precisa delegar ao `dev`;
+- quando o `dev` entrega algo que dá para verificar (tela, API, comando para subir), um hook
+  marca a validação como **pendente** e cobra o `tester` antes de fechar a tarefa;
+- cada papel tem um **teto de turnos**: ao chegar nele, o subagente devolve o que já fez e o
+  orquestrador continua de onde parou;
+- um `commit` só sai com identidade git configurada no próprio repositório.
 
-O gasto dominante de um loop de agentes é o **contexto reenviado**: a cada turno a invocação
-inteira volta para o modelo, e ela só cresce. Por isso o mesmo turno custa mais no fim de uma
-invocação longa do que numa curta: invocações longas reenviam o contexto a cada turno e ficam
-caras. A sessão principal também pesa na conta, porque
-acumula tudo o que lê. Por isso existem o `scout` (a varredura morre com ele) e o
-`delega-varredura.py`. Os números variam por pessoa e por projeto: meça os seus com
-`forge-tokens`, seguindo [`docs/linha-de-base.md`](docs/linha-de-base.md).
+O `/forge:setup` grava o resto das regras no `CLAUDE.md` do seu repositório. Entre elas:
+nada de `git push` ou deploy sem ordem sua, commits em português e tarefas independentes
+rodando em paralelo.
 
-Cada invocação tem um teto de chamadas de ferramenta, imposto por `subagent-turn-budget.sh`,
-com valor próprio para cada papel. No teto, o `dev`, o `scout` e os papéis genéricos devolvem `status: "PARCIAL"`; o `tester`
-devolve `FALHOU` se já achou defeito do produto, ou `BLOQUEADO` (`teto de turnos esgotado`) se
-não achou nenhum. O orquestrador re-loteia sem perder o que já foi feito; não é falha.
+## Os três jeitos de começar
 
-| Papel | Aviso | Teto | Variáveis de ambiente |
-|---|---|---|---|
-| `dev` | 25 | 35 (≈60 turnos) | `FORGE_TURN_WARN` / `FORGE_TURN_CAP` |
-| `tester` | 45 | 65 | `FORGE_TESTER_WARN` / `FORGE_TESTER_CAP` |
-| `scout` | 28 | 40 | `FORGE_SCOUT_WARN` / `FORGE_SCOUT_CAP` |
-| genérico (`general-purpose`, `Explore`, agentes de outros plugins) | 30 | 40 | `FORGE_OUTRO_WARN` / `FORGE_OUTRO_CAP` |
+Digite `/forge` e escolha um caminho:
 
-O teto do `dev` é conservador de propósito: apertar demais corta tarefas no meio, e o
-retrabalho de uma tarefa partida no meio custa mais que a economia. Também por custo, `dev` e
-`tester` ficam em sonnet. Para medir o seu uso, rode
-`plugins/forge/bin/forge-tokens --desde AAAA-MM-DD` e compare antes e depois.
+| | Caminho | Quando usar | Termina em |
+|:-:|---|---|---|
+| **1** | **Criar do zero** | "quero um app que..." | projeto novo, com spec, tarefas e código validado |
+| **2** | **Fix / implementação** | bug ou feature num projeto que já existe | mudança validada pelo `tester` |
+| **3** | **Investigar / analisar** | incidente, banco de dados, custo, infraestrutura | relatório, sem nenhuma linha de código escrita |
 
-O `rtk` é opcional; os hooks degradam em silêncio sem o binário. O ganho dele varia
-conforme o perfil de comandos de cada projeto; vale medir (`docs/linha-de-base.md`,
-`forge-tokens`). As regras de briefing (`Read` para arquivo conhecido, `command grep -rn`/`find`
-com filtro e limite, filtrar na fonte) atacam a mesma causa, o contexto acumulado, e valem com
-ou sem o `rtk`.
+Atalhos: `/forge:new` vai direto para o caminho 1 e `/forge:fix`, para o 2.
 
-O repositório não traz medição própria: o ganho dos tetos e dos hooks só está provado na sua
-máquina depois que você medir antes e depois.
+<details>
+<summary><b>Exemplo: como fica uma conversa do começo ao fim</b></summary>
+<br>
 
-## Estrutura do repositório
+Pedido: *"quero uma API de lista de tarefas com login"*.
 
+1. O orquestrador faz algumas rodadas curtas de perguntas e marca cada decisão que tomou por
+   conta própria, para você revisar.
+2. Gera a spec (`prompt.md`) com critérios de aceite e **mostra para você aprovar**.
+3. Divide em tarefas pequenas e despacha o `dev`, com várias ao mesmo tempo quando uma não
+   depende da outra.
+4. Cada entrega passa pelo `tester`, e o que falhar volta para o `dev`.
+5. O progresso fica anotado em `.forge/`, então dá para parar hoje e retomar amanhã.
+
+Nada vai para o GitHub ou para a nuvem sem você pedir.
+
+</details>
+
+## Feito para economizar token
+
+Num loop de agentes, o maior custo é o **contexto reenviado**: a cada turno, a conversa inteira
+volta para o modelo. O Forge ataca isso de três formas:
+
+- **`scout` descartável:** a varredura acontece no contexto dele, só o resumo volta, e o resto
+  é descartado quando ele termina.
+- **Teto de turnos por papel:** nenhuma invocação cresce sem limite.
+- **Aviso de leitura:** se o orquestrador começa a abrir arquivo atrás de arquivo, um hook
+  sugere passar a tarefa ao `scout`.
+
+O ganho varia de projeto para projeto. Para medir o seu, use o `forge-tokens`, como explica a
+[`docs/linha-de-base.md`](docs/linha-de-base.md).
+
+## Perguntas frequentes
+
+<details>
+<summary><b>Preciso do Chrome?</b></summary>
+<br>
+
+Só se você quiser que o `tester` valide interface no navegador real (modo `browser`, pela
+extensão `claude-in-chrome`). Sem ela, o modo `contrato` valida API, CLI, MCP server e
+infraestrutura normalmente.
+
+</details>
+
+<details>
+<summary><b>Funciona com qualquer nuvem e qualquer stack?</b></summary>
+<br>
+
+Sim. Nada depende de um provedor específico, e a regra de deploy é genérica. Em projeto novo,
+o `dev` usa por padrão React + Vite + TypeScript e Express + TypeScript com `pnpm`. Em projeto
+que já existe, ele segue o stack do repositório.
+
+</details>
+
+<details>
+<summary><b>Repositório atual ou fábrica?</b></summary>
+<br>
+
+- **Repositório atual:** instale o plugin e rode `/forge:setup` dentro do repositório onde você
+  já trabalha. O controle fica em `.forge/`.
+- **Fábrica:** uma pasta base com `projects/` dentro. Cada projeto vive em `projects/<nome>/`,
+  com git próprio, e você conversa sempre com um orquestrador na raiz. O `/forge:setup`
+  oferece criar essa estrutura.
+
+O Forge detecta sozinho em qual dos dois modos está.
+
+</details>
+
+<details>
+<summary><b>O <code>rtk</code> é obrigatório?</b></summary>
+<br>
+
+Não. O [`rtk`](https://github.com/rtk-ai/rtk) comprime a saída dos comandos de terminal, e o
+`/forge:setup` oferece instalar. Sem ele, os hooks continuam funcionando.
+
+</details>
+
+<details>
+<summary><b>Dá para ajustar os tetos de turnos?</b></summary>
+<br>
+
+Sim, por variável de ambiente (`FORGE_TURN_CAP`, `FORGE_TESTER_CAP`, `FORGE_SCOUT_CAP`…). Os
+valores padrão e os avisos estão na [referência técnica](docs/referencia.md#economia-de-token).
+
+</details>
+
+<details>
+<summary><b>Para que serve o <code>forge-frontend</code>?</b></summary>
+<br>
+
+São 10 skills de interface que o `dev` consulta: TypeScript, React, Tailwind, responsividade,
+dark mode, animações, performance, design de UI e conteúdo. Instale só se você trabalha com
+front-end. Quem mexe com API, CLI, dados ou infra não precisa, e assim não paga o contexto
+delas.
+
+</details>
+
+## Para ir mais fundo
+
+| Documento | O que tem |
+|---|---|
+| [`docs/tutorial.md`](docs/tutorial.md) | passo a passo do dia a dia, com exemplos de pedido |
+| [`docs/referencia.md`](docs/referencia.md) | papéis, hooks, invariantes, tetos de turnos, estrutura e testes |
+| [`docs/forge-para-a-equipe.md`](docs/forge-para-a-equipe.md) | o que é, por que existe e como adotar numa equipe |
+| [`docs/linha-de-base.md`](docs/linha-de-base.md) | como medir o seu consumo de token antes e depois |
+
+## Instalação
+
+<p align="center">
+  <img src="docs/assets/instalacao.svg" width="100%" alt="Terminal animado digitando os comandos de instalação do Forge e abrindo o menu do /forge">
+</p>
+
+### 1. Confira os pré-requisitos
+
+- [Claude Code](https://claude.com/claude-code) instalado.
+- `python3` e `bash` no `PATH`. Os hooks usam só a biblioteca padrão.
+- `git`. Para criar ou mexer em projeto JavaScript, também `node` com `pnpm`.
+- Opcionais: [`rtk`](https://github.com/rtk-ai/rtk) e a extensão `claude-in-chrome`.
+
+### 2. Instale o plugin (uma vez por máquina)
+
+Dentro do Claude Code:
+
+```text
+/plugin marketplace add MatheusRibeir098/forge-claude
+/plugin install forge@forge-claude
 ```
-.claude-plugin/marketplace.json     # catálogo: forge e forge-frontend
-plugins/forge/
-  .claude-plugin/plugin.json
-  agents/                           # dev.md, tester.md, scout.md
-  commands/                         # forge, new, fix, setup, doctor
-  skills/                           # 15 skills: orchestrator, setup-blocos, no-deploy-no-push,
-                                    #   safe-operations, spec-driven, e2e-chrome, testing-strategy, ...
-  hooks/                            # hooks.json, scripts, lib/ e tests/
-  evals/                            # avaliação de comportamento (1 caso)
-  bin/forge-tokens                  # mede consumo a partir dos transcritos
-  templates/                        # prompt.template.md e .npmrc
-plugins/forge-frontend/             # 10 skills de frontend (opcional)
-docs/                               # tutorial, apresentação para equipe, linha de base
+
+Se você trabalha com interface, instale também o complemento:
+
+```text
+/plugin install forge-frontend@forge-claude
 ```
 
-## Desenvolvimento
-
-Testes dos hooks (biblioteca padrão, um script por hook, 92 casos no total):
+<details>
+<summary>Prefere o terminal? O mesmo pela linha de comando</summary>
+<br>
 
 ```bash
-for t in plugins/forge/hooks/tests/test_*.py; do python3 "$t"; done
+claude plugin marketplace add MatheusRibeir098/forge-claude
+claude plugin install forge@forge-claude
+claude plugin install forge-frontend@forge-claude   # opcional
 ```
 
-Os scripts são `test_delega_varredura.py` (10 casos), `test_deny_bash_writes.py` (8),
-`test_deny_orchestrator.py` (12), `test_identidade_local.py` (8), `test_require_tester.py` (25,
-construídos a partir de payloads reais de `PostToolUse` capturados na CLI),
-`test_subagent_turn_budget.py` (16) e `test_volta_pasta_base.py` (13).
+</details>
 
-Validação estática dos manifestos, sem custo:
+> [!TIP]
+> Se o `/forge` não aparecer na lista de comandos, reinicie a sessão do Claude Code.
+
+### 3. Prepare o repositório (uma vez por repositório)
+
+Abra o Claude Code **na raiz** do repositório onde você vai trabalhar e rode:
+
+```text
+/forge:setup     # grava as permissions e as regras no CLAUDE.md (mostra o diff e pede confirmação)
+/forge:doctor    # confere se está tudo certo; só lê, não altera nada
+```
+
+### 4. Comece
+
+```text
+/forge
+```
+
+> [!WARNING]
+> Abra a sessão sempre na raiz, do repositório preparado ou da fábrica, e nunca direto dentro
+> de `projects/<nome>/`. Ali não existem o `CLAUDE.md` nem as permissions do Forge, e não há
+> garantia de que os hooks disparem.
+
+### Atualizar e remover
 
 ```bash
-claude plugin validate .
+claude plugin marketplace update forge-claude   # busca a versão nova do catálogo
+claude plugin update forge@forge-claude         # atualiza o plugin; depois reinicie a sessão
+claude plugin uninstall forge@forge-claude      # remove
 ```
-
-A suíte de **comportamento** em `plugins/forge/evals/` verifica o que instrução em markdown não
-garante sozinha; hoje é um caso, `investigacao-nao-vira-codigo` (uma investigação não pode
-virar loop de escrever código). Rodar custa tokens, porque cada caso é uma execução de modelo.
-
-### O que ainda não foi verificado
-
-O `tester` em modo `browser` depende das ferramentas do `claude-in-chrome`. O frontmatter de
-`plugins/forge/agents/tester.md` omite o campo `tools`, então o subagente herda as da sessão,
-incluindo as do MCP. Que isso entrega o navegador ao `tester` ainda não foi provado em
-execução; o `/forge:doctor` faz essa verificação. Sem o navegador, o modo `contrato` funciona
-normalmente.
 
 ## Licença
 
-Nada aqui depende de um provedor de nuvem específico: a regra de deploy é genérica e o mapa
-de credenciais é opcional.
-
-Licença MIT, em [`LICENSE`](LICENSE).
+MIT, em [`LICENSE`](LICENSE).

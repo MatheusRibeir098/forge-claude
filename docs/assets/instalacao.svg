@@ -1,0 +1,81 @@
+<!--
+Linha do tempo (instalacao.svg), loop de 15 s, mesma duracao em todas as animacoes:
+   0.80 a  2.73 s : digita linha 1 (55 caracteres, steps(55))
+   3.13 a  3.43 s : comentario da linha 2 surge por fade
+   4.03 a  5.29 s : digita linha 3 (36 caracteres, steps(36))
+   5.69 a  5.99 s : comentario da linha 4 surge por fade
+   6.58 a  7.08 s : digita linha 5 (14 caracteres, steps(14))
+   7.48 a  7.78 s : comentario da linha 6 surge por fade
+   8.38 a  8.65 s : digita linha 7 (8 caracteres, steps(8))
+   9.05 a  9.46 s : linhas 8 e 9 surgem juntas por fade
+   9.46 a 13.05 s : resultado completo parado na tela
+  13.05 a 13.65 s : tudo some em fade; ate 15 s a tela fica vazia e o loop recomeca
+  Cursor em bloco acompanha a linha digitada; pisca nas pausas (meio periodo de 0.3 s).
+  t=1 s: linha 1 com ~5 caracteres | t=4 s: linhas 1 e 2 prontas, cursor piscando
+  t=8 s: linhas 1 a 6 prontas, linha 7 ainda vazia | t=13 s: 9 linhas visiveis (fade comeca em 13.05 s)
+  Movimento reduzido: 9 linhas visiveis, sem cursor.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="360" viewBox="0 0 880 360" role="img" aria-label="Terminal do Claude Code digitando os comandos de instalação do Forge: adicionar o marketplace, instalar o plugin, rodar o setup e abrir o Forge." font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15">
+  <title>Instalação do Forge no terminal do Claude Code, em quatro comandos</title>
+  <style>
+    @keyframes c0 { 0%, 5.333% { transform: translateX(-495px); opacity: 1; animation-timing-function: steps(55, end); } 18.167% { transform: translateX(0); opacity: 1; } 18.300%, 100% { transform: translateX(0); opacity: 0; } }
+    .c0 { animation: c0 15s linear infinite; }
+    @keyframes c2 { 0%, 26.833% { transform: translateX(-324px); opacity: 1; animation-timing-function: steps(36, end); } 35.233% { transform: translateX(0); opacity: 1; } 35.367%, 100% { transform: translateX(0); opacity: 0; } }
+    .c2 { animation: c2 15s linear infinite; }
+    @keyframes c4 { 0%, 43.900% { transform: translateX(-126px); opacity: 1; animation-timing-function: steps(14, end); } 47.167% { transform: translateX(0); opacity: 1; } 47.300%, 100% { transform: translateX(0); opacity: 0; } }
+    .c4 { animation: c4 15s linear infinite; }
+    @keyframes c6 { 0%, 55.833% { transform: translateX(-72px); opacity: 1; animation-timing-function: steps(8, end); } 57.700% { transform: translateX(0); opacity: 1; } 57.833%, 100% { transform: translateX(0); opacity: 0; } }
+    .c6 { animation: c6 15s linear infinite; }
+    @keyframes n1 { 0%, 20.833% { opacity: 0; } 22.833%, 100% { opacity: 1; } }
+    .n1 { animation: n1 15s linear infinite; }
+    @keyframes n3 { 0%, 37.900% { opacity: 0; } 39.900%, 100% { opacity: 1; } }
+    .n3 { animation: n3 15s linear infinite; }
+    @keyframes n5 { 0%, 49.833% { opacity: 0; } 51.833%, 100% { opacity: 1; } }
+    .n5 { animation: n5 15s linear infinite; }
+    @keyframes nr { 0%, 60.367% { opacity: 0; } 63.033%, 100% { opacity: 1; } }
+    .nr { animation: nr 15s linear infinite; }
+    @keyframes grp { 0%, 87.033% { opacity: 1; } 91.033%, 100% { opacity: 0; } }
+    .grp { animation: grp 15s linear infinite; }
+    @keyframes cm { 0% { transform: translate(48px, 98px); } 5.333% { transform: translate(48px, 98px); animation-timing-function: steps(55, end); } 18.167% { transform: translate(543px, 98px); animation-timing-function: step-end; } 26.833% { transform: translate(48px, 154px); animation-timing-function: steps(36, end); } 35.233% { transform: translate(372px, 154px); animation-timing-function: step-end; } 43.900% { transform: translate(48px, 210px); animation-timing-function: steps(14, end); } 47.167% { transform: translate(174px, 210px); animation-timing-function: step-end; } 55.833% { transform: translate(48px, 266px); animation-timing-function: steps(8, end); } 57.700% { transform: translate(120px, 266px); animation-timing-function: step-end; } 100% { transform: translate(120px, 266px); } }
+    @keyframes cb { 0.000% { opacity: 1; } 2.000% { opacity: 0; } 4.000% { opacity: 1; } 5.333% { opacity: 1; } 18.167% { opacity: 1; } 20.167% { opacity: 0; } 22.167% { opacity: 1; } 24.167% { opacity: 0; } 26.167% { opacity: 1; } 26.833% { opacity: 1; } 35.233% { opacity: 1; } 37.233% { opacity: 0; } 39.233% { opacity: 1; } 41.233% { opacity: 0; } 43.233% { opacity: 1; } 43.900% { opacity: 1; } 47.167% { opacity: 1; } 49.167% { opacity: 0; } 51.167% { opacity: 1; } 53.167% { opacity: 0; } 55.167% { opacity: 1; } 55.833% { opacity: 1; } 57.700% { opacity: 1; } 59.700% { opacity: 0; } 61.700% { opacity: 1; } 63.700% { opacity: 0; } 65.700% { opacity: 1; } 67.700% { opacity: 0; } 69.700% { opacity: 1; } 71.700% { opacity: 0; } 73.700% { opacity: 1; } 75.700% { opacity: 0; } 77.700% { opacity: 1; } 79.700% { opacity: 0; } 81.700% { opacity: 1; } 83.700% { opacity: 0; } 85.700% { opacity: 1; } 87.033% { opacity: 1; } }
+    .cur { animation: cm 15s linear infinite, cb 15s step-end infinite; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before { animation: none !important; }
+      .cur { opacity: 0; }
+    }
+  </style>
+
+  <defs>
+    <clipPath id="panelClip"><rect x="25" y="63" width="830" height="272"/></clipPath>
+  </defs>
+  <rect width="880" height="360" rx="16" fill="#0D1117" stroke="#30363D"/>
+  <rect x="24" y="24" width="832" height="312" rx="12" fill="#161B22" stroke="#30363D"/>
+  <line x1="24" y1="62" x2="856" y2="62" stroke="#30363D"/>
+  <circle cx="48" cy="43" r="6" fill="#F85149"/>
+  <circle cx="68" cy="43" r="6" fill="#FBBF24"/>
+  <circle cx="88" cy="43" r="6" fill="#3FB950"/>
+  <text x="440" y="48" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13" fill="#8B949E" text-anchor="middle">claude</text>
+
+  <g class="grp">
+    <text x="48" y="98" fill="#F97316" textLength="9" lengthAdjust="spacingAndGlyphs">&gt;</text>
+    <text x="66" y="98" fill="#E6EDF3" textLength="477" lengthAdjust="spacingAndGlyphs">/plugin marketplace add MatheusRibeir098/forge-claude</text>
+    <text x="48" y="154" fill="#F97316" textLength="9" lengthAdjust="spacingAndGlyphs">&gt;</text>
+    <text x="66" y="154" fill="#E6EDF3" textLength="306" lengthAdjust="spacingAndGlyphs">/plugin install forge@forge-claude</text>
+    <text x="48" y="210" fill="#F97316" textLength="9" lengthAdjust="spacingAndGlyphs">&gt;</text>
+    <text x="66" y="210" fill="#E6EDF3" textLength="108" lengthAdjust="spacingAndGlyphs">/forge:setup</text>
+    <text x="48" y="266" fill="#F97316" textLength="9" lengthAdjust="spacingAndGlyphs">&gt;</text>
+    <text x="66" y="266" fill="#E6EDF3" textLength="54" lengthAdjust="spacingAndGlyphs">/forge</text>
+    <text class="n1" x="66" y="126" fill="#8B949E"># adiciona o catálogo (uma vez por máquina)</text>
+    <text class="n3" x="66" y="182" fill="#8B949E"># instala o Forge</text>
+    <text class="n5" x="66" y="238" fill="#8B949E"># prepara o repositório: mostra o diff e pede confirmação</text>
+    <text class="nr" x="66" y="294" fill="#FBBF24" font-weight="700">Forge — Fábrica de Projetos</text>
+    <text class="nr" x="66" y="322" fill="#E6EDF3" style="white-space:pre" xml:space="preserve">1. Criar do zero    2. Fix/implementação    3. Investigar</text>
+    <g clip-path="url(#panelClip)">
+      <rect class="c0" x="543" y="81" width="515" height="24" fill="#161B22"/>
+    <rect class="c2" x="372" y="137" width="344" height="24" fill="#161B22"/>
+    <rect class="c4" x="174" y="193" width="146" height="24" fill="#161B22"/>
+    <rect class="c6" x="120" y="249" width="92" height="24" fill="#161B22"/>
+      <rect class="cur" x="0" y="-13" width="9" height="17" fill="#E6EDF3" opacity="0"/>
+    </g>
+  </g>
+</svg>

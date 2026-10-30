@@ -1,7 +1,7 @@
 # Tutorial — usando o Forge no dia a dia
 
 Este é o passo a passo prático. Para entender *por que* a ferramenta é assim, veja o
-`README.md` e o `docs/forge-para-a-equipe.md`.
+`README.md`, o `docs/referencia.md` e o `docs/forge-para-a-equipe.md`.
 
 ## 1. Instalar (uma vez por máquina)
 

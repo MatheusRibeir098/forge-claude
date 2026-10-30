@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+guarda.svg: loop de 8 s, uma única duração. Linha do tempo (segundos):
+0 a 1,5   chip Write src/App.tsx sai do Orquestrador em direção ao escudo hook
+1,5 a 2,5 chip bate no escudo e treme (vermelho); escudo pisca em vermelho e treme; aparece abaixo a mensagem bloqueado: código é com o dev; o primeiro chip do rodapé pulsa
+2,5 a 3   chip some
+3 a 5,5   chip briefing (âmbar) desce do Orquestrador, passa por baixo do escudo (y 196) e sobe até o dev; segundo chip do rodapé pulsa em 3,5
+5,5 a 7   dev acende e mostra o visto verde com dev escreve; terceiro chip do rodapé pulsa em 5,5
+7 a 8     tudo volta ao início
+Movimento reduzido: nós, escudo, cotovelo e os 3 chips; sem chips em voo, sem mensagem de bloqueio e sem dev escreve.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="280" viewBox="0 0 880 280" role="img" aria-label="Diagrama animado: o orquestrador tenta escrever um arquivo, o hook bloqueia com a mensagem que código é com o dev. O briefing contorna o escudo por baixo e chega ao dev, que escreve. Três regras: orquestrador não escreve código, dev não valida a si mesmo, teto de turnos por papel.">
+<title>As regras são impostas por hook: o orquestrador é bloqueado ao escrever código e o briefing leva o trabalho ao dev</title>
+<defs>
+<filter id="gr" x="-15%" y="-40%" width="130%" height="180%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<filter id="gp" x="-400%" y="-400%" width="900%" height="900%"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<style>
+.ti{font:600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;letter-spacing:2px;fill:#8B949E}
+.nm{font:700 16px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;fill:#E6EDF3}
+.sb{font:12px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;fill:#8B949E}
+.lb{font:600 11px ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace;paint-order:stroke;stroke:#0D1117;stroke-width:4px;stroke-linejoin:round}
+.mn{font:12px ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace}
+.a{animation-duration:8s;animation-timing-function:linear;animation-iteration-count:infinite}
+.k1{animation-name:k1}
+.k2{animation-name:k2}
+.k3{animation-name:k3}
+.k4{animation-name:k4}
+.k5{animation-name:k5}
+.k6{animation-name:k6}
+.k7{animation-name:k7}
+.k8{animation-name:k8}
+.k9{animation-name:k9}
+.k10{animation-name:k10}
+.k11{animation-name:k11}
+@keyframes k1{0%{opacity:0}67.5%{opacity:0}69.375%{opacity:1}85.625%{opacity:1}87.5%{opacity:0}100%{opacity:0}}
+@keyframes k2{0%{transform:translate(0px,0px)}18.75%{transform:translate(0px,0px)}20%{transform:translate(-4px,0px)}21.25%{transform:translate(4px,0px)}22.5%{transform:translate(-3px,0px)}23.75%{transform:translate(3px,0px)}25%{transform:translate(-2px,0px)}26.25%{transform:translate(2px,0px)}27.5%{transform:translate(0px,0px)}100%{transform:translate(0px,0px)}}
+@keyframes k3{0%{opacity:0}18.75%{opacity:0}20%{opacity:1}31.875%{opacity:1}33.125%{opacity:0}100%{opacity:0}}
+@keyframes k4{0%{opacity:0}18.75%{opacity:0}20.625%{opacity:1}31.875%{opacity:1}33.75%{opacity:0}100%{opacity:0}}
+@keyframes k5{0%{opacity:0}68.75%{opacity:0}70.625%{opacity:1}85.625%{opacity:1}87.5%{opacity:0}100%{opacity:0}}
+@keyframes k6{0%{transform:translate(240px,110px);opacity:0}1.25%{transform:translate(240px,110px);opacity:0}3.75%{transform:translate(253.7px,110px);opacity:1}18.75%{transform:translate(333px,110px);opacity:1}20%{transform:translate(329px,110px);opacity:1}21.25%{transform:translate(337px,110px);opacity:1}22.5%{transform:translate(330px,110px);opacity:1}23.75%{transform:translate(336px,110px);opacity:1}25%{transform:translate(331px,110px);opacity:1}26.25%{transform:translate(335px,110px);opacity:1}27.5%{transform:translate(333px,110px);opacity:1}31.25%{transform:translate(333px,110px);opacity:1}37.5%{transform:translate(325px,110px);opacity:0}100%{transform:translate(325px,110px);opacity:0}}
+@keyframes k7{0%{opacity:0}18.75%{opacity:0}20%{opacity:1}32.5%{opacity:1}33.75%{opacity:0}100%{opacity:0}}
+@keyframes k8{0%{transform:translate(130px,160px);opacity:0}37.5%{transform:translate(130px,160px);opacity:0}39.126%{transform:translate(130px,196px);opacity:1}39.375%{transform:translate(135.52px,196px);opacity:1}66.875%{transform:translate(744.48px,196px);opacity:1}67.124%{transform:translate(750px,196px);opacity:1}68.75%{transform:translate(750px,160px);opacity:0}100%{transform:translate(750px,160px);opacity:0}}
+@keyframes k9{0%{opacity:0}18.75%{opacity:0}21.875%{opacity:0.9}31.25%{opacity:0.9}34.375%{opacity:0}100%{opacity:0}}
+@keyframes k10{0%{opacity:0}43.75%{opacity:0}46.875%{opacity:0.9}56.25%{opacity:0.9}59.375%{opacity:0}100%{opacity:0}}
+@keyframes k11{0%{opacity:0}68.75%{opacity:0}71.875%{opacity:0.9}81.25%{opacity:0.9}84.375%{opacity:0}100%{opacity:0}}
+@media (prefers-reduced-motion: reduce){*{animation:none !important}}
+</style>
+<rect width="880" height="280" rx="16" fill="#0D1117"/>
+<text class="ti" x="40" y="40">AS REGRAS SÃO IMPOSTAS POR HOOK</text>
+<path d="M220 110 H406" fill="none" stroke="#30363D" stroke-width="2" stroke-linejoin="round"/>
+<path d="M474 110 H660" fill="none" stroke="#30363D" stroke-width="2" stroke-linejoin="round"/>
+<path d="M130 142 V196 H750 V142" fill="none" stroke="#30363D" stroke-width="2" stroke-linejoin="round" stroke-dasharray="5 5"/>
+<rect x="40" y="78" width="180" height="64" rx="12" fill="#161B22" stroke="#30363D" stroke-width="1.5"/><text class="nm" x="58" y="106">Orquestrador</text><text class="sb" x="58" y="126">planeja e distribui</text>
+<rect x="40" y="94" width="4" height="32" rx="2" fill="#F97316"/>
+<rect x="660" y="78" width="180" height="64" rx="12" fill="#161B22" stroke="#30363D" stroke-width="1.5"/><text class="nm" x="678" y="106">dev</text><text class="sb" x="678" y="126">escreve o código</text>
+<rect class="a k1" x="660" y="78" width="180" height="64" rx="12" fill="none" stroke="#F97316" stroke-width="2" filter="url(#gr)" opacity="0"/>
+<g class="a k2"><path d="M440 66 L474 78 V110 C474 134 460 148 440 158 C420 148 406 134 406 110 V78 Z" fill="#161B22" stroke="#FBBF24" stroke-width="3" stroke-linejoin="round"/><text x="440" y="116" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, &apos;SF Mono&apos;, Menlo, Consolas, &apos;DejaVu Sans Mono&apos;, monospace" font-size="13" font-weight="700" fill="#FBBF24">hook</text><path class="a k3" d="M440 66 L474 78 V110 C474 134 460 148 440 158 C420 148 406 134 406 110 V78 Z" fill="rgba(248,81,73,0.18)" stroke="#F85149" stroke-width="3" stroke-linejoin="round" filter="url(#gr)" opacity="0"/></g>
+<text class="mn a k4" x="440" y="180" text-anchor="middle" fill="#F85149" opacity="0">bloqueado: código é com o dev</text>
+<g class="a k5" opacity="0"><path d="M690 62 l4 4 l8 -9" fill="none" stroke="#3FB950" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><text class="mn" x="710" y="66" font-weight="700" fill="#3FB950">dev escreve</text></g>
+<g class="a k6" opacity="0"><rect x="-70" y="-13" width="140" height="26" rx="6" fill="#161B22" stroke="#F97316" stroke-width="1.5"/><text class="mn" x="0" y="4" text-anchor="middle" fill="#E6EDF3">Write src/App.tsx</text><rect class="a k7" x="-70" y="-13" width="140" height="26" rx="6" fill="none" stroke="#F85149" stroke-width="2" opacity="0"/></g>
+<g class="a k8" opacity="0"><rect x="-42" y="-12" width="84" height="24" rx="6" fill="#161B22" stroke="#FBBF24" stroke-width="1.5"/><text class="mn" x="0" y="4" text-anchor="middle" fill="#FBBF24">briefing</text></g>
+<g><rect x="45" y="228" width="250" height="34" rx="8" fill="#161B22" stroke="#30363D" stroke-width="1.5"/><circle cx="62" cy="245" r="3" fill="#FBBF24"/><text class="sb" x="76" y="250" style="fill:#E6EDF3">orquestrador não escreve código</text><rect class="a k9" x="45" y="228" width="250" height="34" rx="8" fill="none" stroke="#FBBF24" stroke-width="1.5" opacity="0"/></g>
+<g><rect x="315" y="228" width="250" height="34" rx="8" fill="#161B22" stroke="#30363D" stroke-width="1.5"/><circle cx="332" cy="245" r="3" fill="#FBBF24"/><text class="sb" x="346" y="250" style="fill:#E6EDF3">dev não valida a si mesmo</text><rect class="a k10" x="315" y="228" width="250" height="34" rx="8" fill="none" stroke="#FBBF24" stroke-width="1.5" opacity="0"/></g>
+<g><rect x="585" y="228" width="250" height="34" rx="8" fill="#161B22" stroke="#30363D" stroke-width="1.5"/><circle cx="602" cy="245" r="3" fill="#FBBF24"/><text class="sb" x="616" y="250" style="fill:#E6EDF3">teto de turnos por papel</text><rect class="a k11" x="585" y="228" width="250" height="34" rx="8" fill="none" stroke="#FBBF24" stroke-width="1.5" opacity="0"/></g>
+</svg>
