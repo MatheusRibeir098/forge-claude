@@ -46,7 +46,7 @@ Movimento reduzido: nós, escudo, cotovelo e os 3 chips; sem chips em voo, sem m
 @keyframes k11{0%{opacity:0}68.75%{opacity:0}71.875%{opacity:0.9}81.25%{opacity:0.9}84.375%{opacity:0}100%{opacity:0}}
 @media (prefers-reduced-motion: reduce){*{animation:none !important}}
 </style>
-<rect width="880" height="280" rx="16" fill="#0D1117"/>
+<rect x="0.5" y="0.5" width="879" height="279" rx="16" fill="#0D1117" stroke="#30363D" stroke-width="1"/>
 <text class="ti" x="40" y="40">AS REGRAS SÃO IMPOSTAS POR HOOK</text>
 <path d="M220 110 H406" fill="none" stroke="#30363D" stroke-width="2" stroke-linejoin="round"/>
 <path d="M474 110 H660" fill="none" stroke="#30363D" stroke-width="2" stroke-linejoin="round"/>

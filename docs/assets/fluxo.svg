@@ -74,7 +74,7 @@ Movimento reduzido: diagrama completo, sem pacotes, com PASSOU, visto e etapa 5 
 @keyframes k23{0%{opacity:0}78.571%{opacity:0}79.429%{opacity:1}96.429%{opacity:1}97.286%{opacity:0}100%{opacity:0}}
 @media (prefers-reduced-motion: reduce){*{animation:none !important}}
 </style>
-<rect width="880" height="400" rx="16" fill="#0D1117"/>
+<rect x="0.5" y="0.5" width="879" height="399" rx="16" fill="#0D1117" stroke="#30363D" stroke-width="1"/>
 <text class="ti" x="40" y="40">COMO UM PEDIDO VIRA ENTREGA</text>
 <path d="M190 190 H300" fill="none" stroke="#30363D" stroke-width="2" stroke-linejoin="round"/>
 <path d="M395 154 V90 H650" fill="none" stroke="#30363D" stroke-width="2" stroke-linejoin="round"/>

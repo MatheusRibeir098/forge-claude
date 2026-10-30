@@ -38,6 +38,7 @@ Linha do tempo (hero.svg):
     }
   </style>
   <defs>
+    <clipPath id="cardClip"><rect x="1" y="1" width="878" height="238" rx="15"/></clipPath>
     <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="240">
       <stop offset="0" stop-color="#0D1117"/>
       <stop offset="1" stop-color="#1B1209"/>
@@ -63,8 +64,10 @@ Linha do tempo (hero.svg):
   <rect width="880" height="240" rx="16" fill="url(#bg)" stroke="#30363D"/>
 
   <text x="110" y="188" font-size="20" fill="#E6EDF3" textLength="660" lengthAdjust="spacingAndGlyphs">Você conversa com o orquestrador. Ele coordena o resto.</text>
-  <rect class="cover" x="770" y="166" width="680" height="34" fill="url(#bg)"/>
-  <g class="curmove"><rect class="cur" x="770" y="168" width="10" height="26" fill="#F97316"/></g>
+  <g clip-path="url(#cardClip)">
+    <rect class="cover" x="770" y="166" width="680" height="34" fill="url(#bg)"/>
+    <g class="curmove"><rect class="cur" x="770" y="168" width="10" height="26" fill="#F97316"/></g>
+  </g>
 
   <ellipse class="glow" cx="440" cy="250" rx="400" ry="140" fill="url(#ember)" opacity=".25"/>
 
