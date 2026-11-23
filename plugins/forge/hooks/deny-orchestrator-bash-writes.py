@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""PreToolUse (Bash, SÓ sessão principal): barra escrita de código de produto feita por Bash.
+"""PreToolUse (Bash): barra escrita de código de produto (e, no modo projeto da fábrica, escrita
+fora do projeto) feita por Bash.
 
 POR QUE EXISTE: o `deny-orchestrator-code-edits.sh` barra Write|Edit do orquestrador, mas sem
 este hook, depois de uma negação, o orquestrador poderia gravar o MESMO conteúdo por
@@ -7,12 +8,17 @@ este hook, depois de uma negação, o orquestrador poderia gravar o MESMO conte�
 
 MESMO CRITÉRIO DE SESSÃO do hook de Write|Edit: payload com `agent_type` => subagente
 (dev/tester), que escreve livremente => este hook fica calado. Sem `agent_type` => orquestrador.
+A única exceção é o modo "projeto da fábrica", onde o subagente também é contido (abaixo).
 
-MESMA REGRA DE CAMINHO: a decisão vem de `lib/decisao_escrita.avalia_caminho` (a mesma função
-do hook de Write|Edit), com a raiz do projeto tirada do payload do mesmo jeito. Caminho
-relativo é resolvido contra o cwd efetivo (o do payload, ajustado por `cd x &&` anteriores);
-caminho fora da raiz segue o tratamento do hook de Write|Edit (livre: scratchpad, /tmp). A
-única exceção própria daqui são os nós `/dev/*` (`> /dev/null`).
+MESMA REGRA DE CAMINHO: a decisão vem de `lib/decisao_escrita.avalia_escrita` (a mesma função
+do hook de Write|Edit), com a raiz da sessão tirada do payload do mesmo jeito. TRÊS MODOS:
+  - fábrica e repo atual: caminho fora da raiz é livre (scratchpad, /tmp), o orquestrador segue
+    a allowlist do modo e o subagente escreve livremente;
+  - projeto da fábrica (sessão aberta em `<fábrica>/projects/<nome>`): contenção no projeto.
+    Fora dele, orquestrador E subagente só escrevem em /tmp, $TMPDIR e ~/.claude*; dentro, o
+    orquestrador segue a allowlist do repo atual e o subagente escreve livremente.
+Caminho relativo é resolvido contra o cwd efetivo (o do payload, ajustado por `cd x &&`
+anteriores). A única exceção própria daqui são os nós `/dev/*` (`> /dev/null`).
 
 O QUE É DETECTADO (alvo de escrita, comando a comando, separados por `&&`, `||`, `;`, `|`):
   - redirecionamento `>`, `>>`, `&>` para um caminho (inclui `cat > x <<EOF`);
@@ -39,7 +45,9 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
 
-from decisao_escrita import avalia_caminho, raiz_do_payload  # noqa: E402
+from decisao_escrita import (  # noqa: E402
+    MOTIVO_CONTENCAO, avalia_escrita, mensagem_contencao, raiz_do_payload,
+)
 from shell_tokens import (  # noqa: E402
     eh_redirecao, novo_cwd_do_cd, resolve, segmentos, sem_prefixos, tokeniza,
 )
@@ -154,8 +162,8 @@ def _eh_no_de_dispositivo(caminho):
     return caminho.startswith("/dev/")
 
 
-def primeiro_alvo_barrado(comando, root, cwd):
-    """(caminho absoluto, modo, permitido_desc) do primeiro alvo barrado, ou None."""
+def primeiro_alvo_barrado(comando, root, cwd, subagente=False):
+    """(caminho absoluto, Decisao) do primeiro alvo barrado, ou None."""
     for segmento in segmentos(tokeniza(comando)):
         _, resto = sem_prefixos(segmento)
         if resto and os.path.basename(resto[0]) == "cd":
@@ -165,13 +173,16 @@ def primeiro_alvo_barrado(comando, root, cwd):
             if not alvo or _DINAMICO.search(alvo) or _eh_no_de_dispositivo(alvo):
                 continue
             absoluto = resolve(alvo, cwd)
-            liberado, modo, permitido = avalia_caminho(absoluto, root)
-            if not liberado:
-                return absoluto, modo, permitido
+            decisao = avalia_escrita(absoluto, root, subagente)
+            if not decisao.liberado:
+                return absoluto, decisao
     return None
 
 
-def _mensagem(alvo, modo, permitido):
+def _mensagem(alvo, decisao):
+    if decisao.motivo == MOTIVO_CONTENCAO:
+        return mensagem_contencao(decisao, alvo, via_bash=True)
+    modo, permitido = decisao.modo, decisao.permitido_desc
     return (
         f"Escrita de código pelo orquestrador é proibida também via Bash (redirecionamento, tee, "
         f"sed -i, cp/mv/install): alvo barrado {alvo}. Modo detectado: {modo}. Permitido neste "
@@ -184,13 +195,12 @@ def _mensagem(alvo, modo, permitido):
 def main():
     try:
         payload = json.loads(sys.stdin.read())
-        if payload.get("agent_type"):
-            return  # subagente (dev/tester): escreve livremente
         comando = (payload.get("tool_input") or {}).get("command")
         if not isinstance(comando, str) or not comando.strip():
             return
         root = raiz_do_payload(payload)
-        achado = primeiro_alvo_barrado(comando, root, root)
+        achado = primeiro_alvo_barrado(comando, root, root,
+                                       subagente=bool(payload.get("agent_type")))
     except Exception:
         return  # hook que explode é pior que hook ausente
     if achado is None:

@@ -196,8 +196,8 @@ Depois, feche com um bloco curto de "como usar a partir de agora" — não deixe
 - **`/forge:doctor`** — diagnostica o ambiente (contexto, permissions, hooks, `rtk`, se o
   `tester` enxerga o navegador) sem alterar nada; rode se algo parecer errado.
 
-Diga onde rodar: **sempre na raiz** — da fábrica, se foi criada, ou do repositório
-preparado. Se a fábrica foi criada, reforce em uma linha: **nunca abra uma sessão nova
-direto dentro de `projects/<nome>/`** — esse diretório é um repositório git separado, sem
-`CLAUDE.md` e sem garantia de que os hooks do Forge disparem ali; peça sempre ao
-orquestrador na raiz, que sabe onde cada projeto está.
+Diga onde rodar: na raiz da fábrica (se foi criada) ou do repositório preparado. Se a fábrica
+foi criada, reforce em uma linha: para trabalhar num projeto existente, abra a sessão em
+`projects/<nome>/` — o `CLAUDE.md` da fábrica é herdado e os hooks do Forge bloqueiam escrita
+fora daquele projeto (liberados só `/tmp` e `~/.claude*`); abra na raiz da fábrica só para criar
+projeto novo, para trabalho que cruza projetos e para a manutenção do próprio Forge.

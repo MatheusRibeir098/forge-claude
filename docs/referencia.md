@@ -52,12 +52,18 @@ a pendência de validação da sessão e trata o veredito do `tester`: `PASSOU` 
 - **Repo atual**: o plugin instalado e `/forge` rodado dentro do repositório onde você já
   trabalha; o controle fica em `.forge/` na raiz dele.
 
-A detecção é automática: é fábrica quando a raiz tem `projects/` **e**
-`templates/prompt.template.md`; qualquer outro caso é repo atual.
+A detecção é automática, em três modos:
 
-Abra a sessão sempre na raiz, da fábrica ou do repositório preparado. Nunca direto dentro de
-`projects/<nome>/`: esse diretório não tem o `CLAUDE.md` nem as `permissions` do Forge, e não
-há garantia de que os hooks disparem ali.
+- **fábrica:** a raiz tem `projects/` **e** `templates/prompt.template.md`;
+- **projeto da fábrica:** a sessão está aberta em `<fábrica>/projects/<nome>/` (ou numa subpasta
+  dele). O `CLAUDE.md` da fábrica é herdado (o Claude Code lê os das pastas acima) e os hooks
+  valem ali. A escrita fica contida no projeto, para o orquestrador e para os subagentes: fora
+  da pasta do projeto só passam `/tmp`, `$TMPDIR` e as pastas `~/.claude*`. Dentro do projeto
+  valem as mesmas regras do repo atual;
+- **repo atual:** qualquer outro caso.
+
+Abra a sessão na raiz da fábrica só para criar projeto novo, para trabalho que cruza projetos e
+para a manutenção do próprio Forge.
 
 ### Hooks
 
@@ -66,13 +72,13 @@ Definidos em `plugins/forge/hooks/hooks.json`. Os scripts `.sh` são chamados vi
 
 | Hook | Evento | O que faz |
 |---|---|---|
-| `deny-orchestrator-code-edits.sh` | PreToolUse `Write\|Edit` | Bloqueia o orquestrador de escrever código de produto; subagentes escrevem livremente |
+| `deny-orchestrator-code-edits.sh` | PreToolUse `Write\|Edit` | Bloqueia o orquestrador de escrever código de produto; subagentes escrevem livremente. No modo projeto da fábrica, contém a escrita no projeto (orquestrador e subagentes) |
 | `subagent-turn-budget.sh` | PreToolUse e PostToolUse | Conta as chamadas de ferramenta de cada subagente, avisa e depois nega no teto do papel; nega ao `dev` subir servidor, browser, screenshot ou `curl` local; delega Bash de leitura ao `rtk` quando ele existe |
 | `volta-pasta-base.py` | PreToolUse `Bash` | Na sessão principal, se a cwd do shell divergir de `CLAUDE_PROJECT_DIR`, reescreve o comando com `cd "<raiz>" &&` e avisa |
 | `rtk-root.sh` | PreToolUse `Bash` | Na sessão principal, encadeia o `rtk` (opcional); é o único escritor de `updatedInput` quando a cwd está na raiz |
 | `require-tester.py` | PostToolUse `Agent` | Ao fim de cada `dev`, decide se o `tester` é obrigatório e em qual modo, pelo retorno estruturado dele; também guarda a pendência de validação e trata os vereditos do `tester` |
 | `delega-varredura.py` | PostToolUse | Conta leituras consecutivas do orquestrador (inclusive chamadas MCP) e, a partir de 8 (`FORGE_LEITURA_LIMIAR`), lembra de delegar ao `scout` |
-| `deny-orchestrator-bash-writes.py` | PreToolUse `Bash` | Barra a escrita de código pela sessão principal via Bash, com as mesmas regras de caminho do `Write\|Edit` |
+| `deny-orchestrator-bash-writes.py` | PreToolUse `Bash` | Barra a escrita de código pela sessão principal via Bash (e, no modo projeto da fábrica, a escrita fora do projeto), com as mesmas regras de caminho do `Write\|Edit` |
 | `git-identidade-local.py` | PreToolUse `Bash` | Nega `git commit` em repo sem `user.email` local |
 
 ### Invariantes

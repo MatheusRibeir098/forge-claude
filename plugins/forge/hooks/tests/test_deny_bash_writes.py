@@ -21,13 +21,13 @@ def caso(nome):
     return deco
 
 
-def roda(cwd, comando, agent_type=None):
+def roda(cwd, comando, agent_type=None, env=None):
     payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": cwd,
                "tool_input": {"command": comando}}
     if agent_type:
         payload["agent_type"] = agent_type
-    r = subprocess.run([sys.executable, HOOK], input=json.dumps(payload),
-                       capture_output=True, text=True)
+    r = subprocess.run([sys.executable, HOOK], input=json.dumps(payload), capture_output=True,
+                       text=True, env={**os.environ, **(env or {})})
     ok(r.returncode == 0, f"exit {r.returncode}: {r.stderr}")
     return '"deny"' in r.stdout, r.stdout
 
@@ -172,6 +172,112 @@ def _symlink():
         finally:
             shutil.rmtree(fora)
     com_repo(corpo)
+
+
+# --- modo "projeto da fábrica": sessão aberta em <fábrica>/projects/<nome> -------------------
+# Fábrica e HOME falso em /var/tmp (fora de /tmp), para a exceção de /tmp não esconder a negação.
+BASE_FORA_DO_TMP = "/var/tmp" if os.path.isdir("/var/tmp") else None
+
+
+def mundo(fn, base=BASE_FORA_DO_TMP):
+    d = tempfile.mkdtemp(dir=base)
+    home = tempfile.mkdtemp(dir=BASE_FORA_DO_TMP)
+    try:
+        os.makedirs(os.path.join(d, "projects"))
+        os.makedirs(os.path.join(d, "templates"))
+        open(os.path.join(d, "templates", "prompt.template.md"), "w").close()
+        for projeto in ("x", "y"):
+            os.makedirs(os.path.join(d, "projects", projeto, "sub"))
+        for pasta in (".claude/projects/-x/memory", ".claude-empresa/plans", ".cache"):
+            os.makedirs(os.path.join(home, pasta))
+        fn(os.path.join(d, "projects", "x"), d, home, {"HOME": home})
+    finally:
+        shutil.rmtree(d)
+        shutil.rmtree(home)
+
+
+@caso("projeto da fábrica, principal: código negado, controle liberado, fora do projeto negado")
+def _projeto_principal():
+    def corpo(x, d, home, env):
+        for c in ("echo x > src/a.ts", "tee src/a.ts", "sed -i s/a/b/ src/a.ts",
+                  "cp /tmp/a.ts src/a.ts", "echo x > ../y/README.md", "echo x > ../y/a.ts",
+                  f"echo x >> {d}/CLAUDE.md", f"cp a.md {d}/templates/", "mv a.md ../y/b.md",
+                  f"echo x > {home}/.cache/a.md", "echo x > ../y/saida.txt"):
+            ok(roda(x, c, env=env)[0], f"deveria negar: {c!r}")
+        for c in (
+                "echo x > .forge/progress.md", "echo x > README.md", "echo x > build.log",
+                "cmd > /dev/null", "echo x > /tmp/forge-teste-livre/a.ts",
+                f"echo x > {home}/.claude/projects/-x/memory/a.md",
+                f"echo x > {home}/.claude-empresa/plans/p.md", "cd sub && echo x > notas.md",
+                "git diff > /tmp/d.patch"):
+            negou, saida = roda(x, c, env=env)
+            ok(not negou, f"deveria liberar: {c!r}\n{saida}")
+    mundo(corpo)
+
+
+@caso("projeto da fábrica, subagente: livre no projeto, negado fora (exceto /tmp e ~/.claude*)")
+def _projeto_subagente():
+    def corpo(x, d, home, env):
+        for ag in ("dev", "tester"):
+            for c in ("echo x > src/a.ts", "sed -i s/a/b/ src/a.ts", "tee e2e/a.spec.ts",
+                      "echo x > /tmp/a", f"echo x > {home}/.claude/a.md"):
+                ok(not roda(x, c, agent_type=ag, env=env)[0], f"{ag} pode: {c!r}")
+            for c in ("echo x > ../y/src/a.ts", "echo x > ../y/README.md", f"tee {d}/CLAUDE.md",
+                      "cp src/a.ts ../y/a.ts", "cd .. && echo x > y/a.ts"):
+                ok(roda(x, c, agent_type=ag, env=env)[0], f"{ag} não pode: {c!r}")
+    mundo(corpo)
+
+
+@caso("projeto da fábrica: sessão em subpasta, `..` e symlink saindo do projeto")
+def _projeto_sub_e_saidas():
+    def corpo(x, d, home, env):
+        sub = os.path.join(x, "sub")
+        ok(roda(sub, "echo x > ../../y/a.md", env=env)[0], "sub: y está fora do projeto x")
+        ok(roda(sub, "echo x > ../src/a.ts", env=env)[0], "sub: código em x negado")
+        ok(not roda(sub, "echo x > ../.forge/p.md", env=env)[0], "sub: .forge de x liberado")
+        ok(not roda(sub, "echo x > ../src/a.ts", agent_type="dev", env=env)[0], "sub: dev em x")
+        os.symlink(os.path.join(d, "projects", "y"), os.path.join(x, "atalho"))
+        for ag in (None, "dev"):
+            ok(roda(x, "echo x > atalho/README.md", agent_type=ag, env=env)[0],
+               f"symlink para y negado ({ag})")
+            ok(roda(x, "echo x > src/../../y/README.md", agent_type=ag, env=env)[0],
+               f"`..` para y negado ({ag})")
+    mundo(corpo)
+
+
+@caso("projeto da fábrica: mensagem da contenção cita projeto, caminho, fábrica e Bash")
+def _projeto_mensagem():
+    def corpo(x, d, home, env):
+        _, saida = roda(x, "echo x > ../y/README.md", env=env)
+        razao = json.loads(saida)["hookSpecificOutput"]["permissionDecisionReason"]
+        for trecho in ("fora da pasta do projeto", "Bash", "'x'", os.path.realpath(x),
+                       os.path.realpath(d), "/tmp", "~/.claude*"):
+            ok(trecho in razao, f"faltou {trecho!r} em: {razao}")
+        _, saida = roda(x, "echo x > src/a.ts", env=env)
+        razao = json.loads(saida)["hookSpecificOutput"]["permissionDecisionReason"]
+        ok("subagente dev" in razao and "Contornar uma negação" in razao, razao)
+    mundo(corpo)
+
+
+@caso("fábrica dentro de /tmp: a exceção de /tmp não vaza para a fábrica")
+def _projeto_fabrica_em_tmp():
+    def corpo(x, d, home, env):
+        ok(roda(x, "echo x > ../y/README.md", agent_type="dev", env=env)[0], "y segue fora")
+        ok(not roda(x, "echo x > /tmp/forge-teste-livre/a.ts", env=env)[0], "/tmp segue livre")
+    mundo(corpo, base=None)
+
+
+@caso("regressão: sessão em projects/ de repo sem ser fábrica segue como repo atual")
+def _regressao_repo_atual():
+    d = tempfile.mkdtemp()
+    try:
+        y = os.path.join(d, "projects", "y")
+        os.makedirs(y)  # sem templates/prompt.template.md: não é fábrica
+        ok(not roda(y, "echo x > ../z/a.ts")[0], "fora da raiz é livre no repo atual")
+        ok(roda(y, "echo x > src/a.ts")[0], "código segue negado")
+        ok(not roda(y, "echo x > src/a.ts", agent_type="dev")[0], "subagente livre")
+    finally:
+        shutil.rmtree(d)
 
 
 @caso("payload ilegível não bloqueia nada")

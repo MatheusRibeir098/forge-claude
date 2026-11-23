@@ -51,10 +51,10 @@ O controle fica em `.forge/` na raiz dele.
 
 O hook detecta sozinho: se a raiz tem `projects/` e `templates/prompt.template.md`, é fábrica.
 
-> ⚠️ Na fábrica, abra a sessão **sempre na raiz da base**. Nunca abra direto dentro de
-> `projects/<nome>/` — é um repositório git separado, sem o `CLAUDE.md` da fábrica, e a
-> rede de segurança do Forge (bloqueio de código, teto de turnos) não tem
-> garantia de valer ali. Precisa mexer num projeto? Peça ao orquestrador rodando na raiz.
+> Na fábrica, para trabalhar num projeto existente, abra a sessão em `projects/<nome>/`: o
+> `CLAUDE.md` da fábrica é herdado, os hooks do Forge valem ali e bloqueiam escrita fora do
+> projeto (liberados só `/tmp` e `~/.claude*`). Abra na raiz da base só para criar projeto novo,
+> para trabalho que cruza projetos e para a manutenção do próprio Forge.
 
 ## 4. Os três fluxos
 
@@ -171,5 +171,5 @@ aviso começando com `[pasta base]`. Não precisa fazer nada. Ele não decide pe
 continua com as `permissions`) e, se algo estranho acontecer, deixa o comando passar
 intacto. O aviso é só um lembrete para o agente usar `cd x && cmd` ou caminhos absolutos.
 
-Isso não vale para uma sessão **aberta** dentro de `projects/<nome>/`: ali a raiz do projeto
-já é a pasta errada. Feche e reabra na raiz da fábrica.
+Numa sessão **aberta** dentro de `projects/<nome>/`, a pasta base é o próprio projeto, e a
+escrita fora dele é bloqueada pelos hooks.

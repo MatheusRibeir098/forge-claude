@@ -167,14 +167,10 @@ O item 7 existe porque, sem ele, o `CLAUDE.md` não diz onde os projetos moram, 
 pedido de clonar ou criar projeto cai na raiz ou no diretório pessoal: um "clone o
 repositório X" feito de dentro da fábrica pode terminar em `~/`.
 
-O item 8 existe porque, se a sessão passar a operar dentro de `projects/<nome>/`, o
-orquestrador pode acabar escrevendo código de produto: esse diretório é um repositório
-git separado, sem este `CLAUDE.md` e (pelo que a documentação do Claude Code não deixa claro)
-sem garantia de que os hooks do plugin disparem fora da raiz onde ele foi habilitado. Como
-esse `CLAUDE.md` só é reenviado enquanto a sessão continuar na raiz da fábrica, o item 8 é a
-segunda camada de defesa (a primeira é o hook) para o caso de a sessão mudar de diretório no
-meio da conversa — não cobre uma sessão aberta direto dentro do projeto filho, por isso o
-aviso equivalente também está no README, fora da sessão.
+O item 8 existe porque a sessão pode ser aberta direto em `projects/<nome>/`: o Claude Code lê os
+`CLAUDE.md` das pastas acima, então este bloco é herdado, e os hooks do plugin valem em
+qualquer pasta. Ali eles passam a conter a escrita no projeto (modo "projeto da fábrica"); o
+item diz isso ao agente e lembra quando abrir na raiz da fábrica.
 
 ```markdown
 7. **Esta pasta é a fábrica do Forge.** Todo projeto vive em `projects/<nome>/`, com git
@@ -182,11 +178,7 @@ aviso equivalente também está no README, fora da sessão.
    (`git clone <url> projects/<nome>`). Nunca clone nem crie projeto na raiz, no diretório
    pessoal, ou em qualquer lugar fora de `projects/`. O controle de cada projeto fica em
    `projects/<nome>/.forge/`. Isso vale mesmo sem ter rodado `/forge:forge`.
-8. **Nunca opere de dentro de `projects/<nome>/`.** Esse diretório é um repositório git
-   separado, sem este `CLAUDE.md` e sem garantia de que os hooks do plugin disparem ali. Se
-   a sessão mudar de diretório para dentro de um projeto (por `cd` ou por ter sido aberta lá),
-   pare e diga ao usuário para reabrir na raiz da fábrica antes de continuar — não trate a
-   ausência de bloqueio como permissão.
+8. **Sessão por projeto.** Para trabalhar num projeto existente, abra a sessão em `projects/<nome>/`: este `CLAUDE.md` é herdado (o Claude Code lê os `CLAUDE.md` das pastas acima), os hooks do plugin valem em qualquer pasta e, ali, bloqueiam escrita fora do projeto (liberados só `/tmp` e `~/.claude*`). Abra na raiz da fábrica só para criar projeto novo, para trabalho que cruza projetos e para a manutenção do próprio Forge.
 ```
 
 ### Algoritmo de merge para `CLAUDE.md`
@@ -354,7 +346,7 @@ usuário quer começar projetos novos em vez de só preparar o repositório onde
 
 Um fluxo de referência é: uma única pasta base, cada repositório em
 que ele trabalha clonado para dentro dela (`projects/app-web`, `projects/api-pagamentos`, …), e um
-único orquestrador rodando sempre na raiz da base — que sabe onde cada projeto está. Projeto
+orquestrador na raiz da base para criar projetos e para o trabalho que cruza projetos (ou uma sessão por projeto, aberta em `projects/<nome>/`, onde a escrita fica contida no projeto). Projeto
 novo nasce em `projects/<nome>/`, cada um com o **próprio git**; a base em si nunca é
 repositório e nunca versiona `projects/`.
 

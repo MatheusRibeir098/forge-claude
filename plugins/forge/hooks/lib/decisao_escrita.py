@@ -1,39 +1,50 @@
-"""Decisão compartilhada de "o orquestrador pode escrever neste caminho?".
+"""Decisão compartilhada de "esta sessão pode escrever neste caminho?".
 
 Usada por DOIS hooks, para que a regra não diverja com o tempo:
   - deny-orchestrator-code-edits.sh   (Write|Edit)
   - deny-orchestrator-bash-writes.py  (Bash: redirecionamento, tee, sed -i, cp/mv/install)
 
-DOIS MODOS, detectados pela raiz do projeto (cwd do payload, senão CLAUDE_PROJECT_DIR):
+TRÊS MODOS, detectados pela raiz da sessão (cwd do payload, senão CLAUDE_PROJECT_DIR):
   fábrica     — raiz tem `projects/` E `templates/prompt.template.md` (layout do
                 Forge como fábrica standalone). Allowlist: */.forge/*, */prompt.md,
                 */templates/*, *.md, *.markdown — em qualquer lugar do repo.
+  projeto da fábrica
+              — a raiz (ou algum ancestral dela, P) está em `<F>/projects/<nome>` e F é uma
+                fábrica. É a sessão aberta direto no projeto: a raiz de contenção é P (o projeto),
+                mesmo que a sessão esteja numa subpasta dele. Orquestrador: dentro de P vale a
+                allowlist do "repo atual" (raiz = P); FORA de P é negado, qualquer extensão.
+                Subagente: livre dentro de P; fora de P, negado. Fora de P só passam /tmp,
+                $TMPDIR e as pastas `~/.claude*` (memória, planos), por realpath, e nunca o que
+                estiver dentro da própria fábrica F.
   repo atual  — qualquer outro caso, ou seja, o Forge (como plugin) rodando dentro do
                 repositório de trabalho de alguém. O orquestrador só pode escrever em
                 `.forge/**` NA RAIZ do repo, em `*.md`/`*.markdown` e em `prompt.md`, além dos
                 dois liberados gerais e da exceção do /forge:setup abaixo. Não pode escrever
-                código-fonte.
+                código-fonte. Subagentes escrevem livremente (os hooks saem cedo).
 
-DOIS LIBERADOS GERAIS, nos dois modos (checados antes da allowlist do modo):
+DOIS LIBERADOS GERAIS, nos modos fábrica e repo atual (checados antes da allowlist do modo):
   - Fora da raiz do projeto: o caminho é resolvido com `os.path.realpath` (então `..` e symlinks
     não enganam) e, se cair fora da raiz, não é código deste projeto — scratchpad do Claude Code
     (/tmp/claude-*/.../scratchpad/), /tmp, memória em ~/.claude. O runtime manda usar o
     scratchpad para temporários; barrar isso só atrapalha. Um `..` que volta para dentro da raiz
-    continua dentro, e é avaliado normalmente.
-  - Artefatos que não são código: *.log, *.patch, *.diff, *.out, *.txt, em qualquer lugar.
+    continua dentro, e é avaliado normalmente. (No modo projeto da fábrica isto NÃO vale: fora
+    de P é negado, salvo as exceções listadas acima.)
+  - Artefatos que não são código: *.log, *.patch, *.diff, *.out, *.txt, em qualquer lugar
+    (no modo projeto da fábrica, só dentro de P).
     Exceção: requirements*.txt, que é dependência de projeto Python.
 
 EXCEÇÃO DO /forge:setup: o próprio comando precisa criar, NA RAIZ do projeto, os arquivos que
 fazem o Forge funcionar ali (.gitignore, .claude/settings.json, .claude/settings.local.json, projects/.gitkeep, templates/.npmrc). Sem esta
 exceção o setup é barrado pelo hook do próprio Forge, e o agente poderia contornar escrevendo
 por `Bash`. A exceção é estreita de propósito: só estes nomes, só na raiz. Duas checagens:
-  - _exato: a raiz JÁ EXISTE — compara relpath contra `root`. Usada sempre, nos dois modos.
+  - _exato: a raiz JÁ EXISTE — compara relpath contra `root`. Usada sempre, nos três modos.
   - _nova_fabrica: o usuário pediu a fábrica em OUTRO caminho (raiz nova ainda inexistente) —
-    casa pelo SUFIXO do caminho. Só no modo "repo atual": no modo fábrica a exceção não pode
+    casa pelo SUFIXO do caminho. Só no modo "repo atual": nos outros modos a exceção não pode
     vazar para `projects/x/...` nem `sub/...`.
 """
 import fnmatch
 import os
+from typing import NamedTuple, Optional
 
 CONFIG_DO_SETUP = {".gitignore", os.path.join(".claude", "settings.json"),
                    os.path.join(".claude", "settings.local.json"),
@@ -117,13 +128,125 @@ def _avalia_dentro_da_raiz(file_path, root):
         "também é livre tudo FORA da raiz do projeto (scratchpad, /tmp, ~/.claude) e os artefatos "
         "*.log/*.patch/*.diff/*.out/*.txt (exceto requirements*.txt) — nunca código-fonte"
     )
+    return _allowlist_do_repo(file_path, root, setup_em_fabrica_nova=True), modo, permitido_desc
+
+
+def _allowlist_do_repo(file_path, root, setup_em_fabrica_nova):
+    """Allowlist do orquestrador num repo de trabalho: .forge/** na raiz, markdown, prompt.md, setup."""
     abs_file = file_path if os.path.isabs(file_path) else os.path.join(root, file_path)
     abs_file = os.path.normpath(abs_file)
     forge_dir = os.path.normpath(os.path.join(root, ".forge"))
     dentro_do_forge = abs_file == forge_dir or abs_file.startswith(forge_dir + os.sep)
     eh_markdown = fnmatch.fnmatch(file_path, "*.md") or fnmatch.fnmatch(file_path, "*.markdown")
     eh_prompt = os.path.basename(file_path) == "prompt.md"
-    liberado = (dentro_do_forge or eh_markdown or eh_prompt
-                or _eh_config_do_setup_exato(file_path, root)
-                or _eh_config_do_setup_nova_fabrica(file_path, root))
-    return liberado, modo, permitido_desc
+    return (dentro_do_forge or eh_markdown or eh_prompt
+            or _eh_config_do_setup_exato(file_path, root)
+            or (setup_em_fabrica_nova and _eh_config_do_setup_nova_fabrica(file_path, root)))
+
+
+MODO_PROJETO = "projeto da fábrica"
+MOTIVO_CODIGO = "codigo"
+MOTIVO_CONTENCAO = "contencao"
+
+
+class Decisao(NamedTuple):
+    liberado: bool
+    motivo: Optional[str] = None      # MOTIVO_CODIGO | MOTIVO_CONTENCAO, só quando negado
+    modo: str = ""
+    permitido_desc: str = ""
+    projeto: Optional[str] = None     # raiz P, só no modo projeto da fábrica
+    fabrica: Optional[str] = None     # raiz F, só no modo projeto da fábrica
+
+
+def contexto_projeto_da_fabrica(root):
+    """(P, F) se a raiz da sessão está dentro de `<F>/projects/<nome>` e F é fábrica; senão None.
+
+    Sobe pelos ancestrais (a própria raiz inclusa), pelo caminho real. Se a raiz já é uma
+    fábrica, o modo é "fábrica" e devolve None.
+    """
+    atual = os.path.realpath(root)
+    if _eh_fabrica(atual):
+        return None
+    while True:
+        pai = os.path.dirname(atual)
+        if pai == atual:
+            return None
+        if os.path.basename(pai) == "projects":
+            fabrica = os.path.dirname(pai)
+            if _eh_fabrica(fabrica):
+                return atual, fabrica
+        atual = pai
+
+
+def _bases_livres_fora_do_projeto():
+    """Pastas (realpath) onde se escreve de fora do projeto: /tmp, $TMPDIR, ~/.claude*."""
+    bases = [os.path.realpath("/tmp")]
+    tmpdir = os.environ.get("TMPDIR")
+    if tmpdir:
+        bases.append(os.path.realpath(tmpdir))
+    home = os.path.expanduser("~")
+    try:
+        nomes = os.listdir(home)
+    except OSError:
+        nomes = []
+    for nome in nomes:
+        pasta = os.path.join(home, nome)
+        if nome.startswith(".claude") and os.path.isdir(pasta):
+            bases.append(os.path.realpath(pasta))
+    return [b for b in bases if b != os.sep]
+
+
+def _eh_excecao_fora_do_projeto(real, fabrica):
+    if not _fora_da_raiz(real, fabrica):
+        return False  # a própria fábrica nunca entra nas exceções (ex.: fábrica dentro de /tmp)
+    return any(not _fora_da_raiz(real, base) for base in _bases_livres_fora_do_projeto())
+
+
+def _avalia_no_projeto(real, projeto, fabrica, subagente):
+    modo = MODO_PROJETO
+    permitido_desc = (
+        f"dentro do projeto ({projeto}): .forge/** na raiz do projeto, *.md/*.markdown, prompt.md, "
+        "a configuração do /forge:setup e os artefatos *.log/*.patch/*.diff/*.out/*.txt "
+        "(exceto requirements*.txt) — nunca código-fonte"
+    )
+    ctx = (modo, permitido_desc, projeto, fabrica)
+    if _fora_da_raiz(real, projeto):
+        if _eh_excecao_fora_do_projeto(real, fabrica):
+            return Decisao(True, None, *ctx)
+        return Decisao(False, MOTIVO_CONTENCAO, *ctx)
+    if subagente:
+        return Decisao(True, None, *ctx)
+    liberado = (_allowlist_do_repo(real, projeto, setup_em_fabrica_nova=False)
+                or _eh_artefato_livre(real))
+    return Decisao(liberado, None if liberado else MOTIVO_CODIGO, *ctx)
+
+
+def avalia_escrita(file_path, root, subagente=False):
+    """Decide se a sessão (orquestrador ou subagente) pode escrever em file_path.
+
+    Fora do modo projeto da fábrica: o subagente é sempre liberado e o orquestrador segue
+    `avalia_caminho`. No modo projeto da fábrica, aplica a contenção descrita no cabeçalho.
+    Caminho relativo é resolvido contra `root` (a raiz/cwd da sessão).
+    """
+    ctx = contexto_projeto_da_fabrica(root)
+    if ctx is None:
+        if subagente:
+            return Decisao(True)
+        liberado, modo, permitido_desc = avalia_caminho(file_path, root)
+        return Decisao(liberado, None if liberado else MOTIVO_CODIGO, modo, permitido_desc)
+    base = os.path.realpath(root)
+    real = os.path.realpath(file_path if os.path.isabs(file_path)
+                            else os.path.join(base, file_path))
+    return _avalia_no_projeto(real, ctx[0], ctx[1], subagente)
+
+
+def mensagem_contencao(decisao, alvo, via_bash=False):
+    """Mensagem de negação da contenção do modo projeto da fábrica."""
+    nome = os.path.basename(decisao.projeto)
+    via = " (via Bash)" if via_bash else ""
+    return (
+        f"Escrita fora da pasta do projeto é bloqueada{via}: esta sessão está contida no projeto "
+        f"'{nome}' ({decisao.projeto}) e o alvo {alvo} está fora dele. Liberados fora do projeto: "
+        "/tmp e ~/.claude*. Para trabalho entre projetos ou na própria fábrica, abra a sessão "
+        f"na raiz da fábrica ({decisao.fabrica})."
+    )

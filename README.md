@@ -240,10 +240,11 @@ Abra o Claude Code **na raiz** do repositório onde você vai trabalhar e rode:
 /forge
 ```
 
-> [!WARNING]
-> Abra a sessão sempre na raiz, do repositório preparado ou da fábrica, e nunca direto dentro
-> de `projects/<nome>/`. Ali não existem o `CLAUDE.md` nem as permissions do Forge, e não há
-> garantia de que os hooks disparem.
+> [!NOTE]
+> Numa fábrica, abra a sessão na raiz para criar projeto novo, para trabalho que cruza projetos
+> e para a manutenção do próprio Forge. Para trabalhar num projeto existente, abra em
+> `projects/<nome>/`: o `CLAUDE.md` da fábrica é herdado e os hooks bloqueiam escrita fora do
+> projeto (liberados só `/tmp` e `~/.claude*`).
 
 ### Atualizar e remover
 

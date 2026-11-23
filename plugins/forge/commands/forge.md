@@ -25,6 +25,10 @@ Escolha (1, 2 ou 3):
 
 ## Fluxo 1 — Criar do zero
 
+Projeto novo se cria com a sessão na raiz da fábrica. Se a sessão está aberta dentro de
+`<fábrica>/projects/<nome>/`, avise o usuário para abrir na raiz da fábrica (a contenção de
+escrita do modo projeto bloquearia a nova pasta) e pare.
+
 1. **Levantar requisitos** com a skill `meta-prompt` (CPE, ≤4 rodadas de perguntas). Marque
    com `[ASSUMPTION]` toda decisão tomada sem input do usuário.
 2. **Gerar a spec**: escolha um nome (sugira um), crie
@@ -51,8 +55,9 @@ Escolha (1, 2 ou 3):
    em produção **sem pedido de mudança de código**, reconheça isso já aqui e vá para o
    **Fluxo 3** em vez de abrir o loop `dev`/`tester`. Diagnóstico primeiro — a correção só
    entra depois que o usuário ler o relatório e pedir.
-1. **Identificar o projeto**: liste `ls projects/`; fuzzy-match pelo nome/tema citado e
-   confirme, ou peça o caminho se nada bater.
+1. **Identificar o projeto**: se a sessão já está aberta dentro de `<fábrica>/projects/<nome>/`,
+   esse é o projeto (não liste `projects/`). Senão, liste `ls projects/`; fuzzy-match pelo
+   nome/tema citado e confirme, ou peça o caminho se nada bater.
 2. **Preparar**: `git pull` antes de analisar (skill `safe-operations`). Para entender a
    estrutura (entry points, package.json, banco), **invoque um `scout`** em vez de abrir os
    arquivos você mesmo — varredura no seu contexto é reenviada a cada turno. Resuma ao

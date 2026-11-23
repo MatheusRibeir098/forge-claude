@@ -22,13 +22,13 @@ def caso(nome):
     return deco
 
 
-def roda(cwd, file_path, agent_type=None, tool="Write"):
+def roda(cwd, file_path, agent_type=None, tool="Write", env=None):
     payload = {"hook_event_name": "PreToolUse", "tool_name": tool, "cwd": cwd,
                "tool_input": {"file_path": os.path.join(cwd, file_path)}}
     if agent_type:
         payload["agent_type"] = agent_type
-    r = subprocess.run(["bash", HOOK], input=json.dumps(payload),
-                       capture_output=True, text=True)
+    r = subprocess.run(["bash", HOOK], input=json.dumps(payload), capture_output=True,
+                       text=True, env={**os.environ, **(env or {})})
     return '"deny"' in r.stdout
 
 
@@ -172,6 +172,167 @@ def _k():
     try:
         ok(roda(d, "projects/x/src/a.ts"), "deveria negar código de projeto")
         ok(not roda(d, "projects/x/.forge/estado.json"), "deveria liberar .forge/")
+    finally:
+        shutil.rmtree(d)
+
+
+# --- modo "projeto da fábrica": sessão aberta em <fábrica>/projects/<nome> -------------------
+# A fábrica e o HOME falso ficam em /var/tmp (fora de /tmp) para que a exceção de /tmp não
+# esconda a negação; um caso à parte cobre a fábrica dentro de /tmp.
+BASE_FORA_DO_TMP = "/var/tmp" if os.path.isdir("/var/tmp") else None
+
+
+def mundo(fn, base=BASE_FORA_DO_TMP):
+    """Fábrica com projects/x e projects/y, HOME falso com ~/.claude e ~/.claude-empresa."""
+    d = tempfile.mkdtemp(dir=base)
+    home = tempfile.mkdtemp(dir=BASE_FORA_DO_TMP)
+    try:
+        os.makedirs(os.path.join(d, "projects"))
+        os.makedirs(os.path.join(d, "templates"))
+        open(os.path.join(d, "templates", "prompt.template.md"), "w").close()
+        for projeto in ("x", "y"):
+            os.makedirs(os.path.join(d, "projects", projeto, "sub"))
+        for pasta in (".claude/projects/-x/memory", ".claude-empresa/plans", ".cache/algo"):
+            os.makedirs(os.path.join(home, pasta))
+        fn(d, home, {"HOME": home})
+    finally:
+        shutil.rmtree(d)
+        shutil.rmtree(home)
+
+
+@caso("(p1) projeto da fábrica, orquestrador: código negado, controle liberado")
+def _p1():
+    def corpo(d, home, env):
+        x = os.path.join(d, "projects", "x")
+        ok(roda(x, "src/a.ts", env=env), "deveria negar código em projects/x")
+        for f in (".forge/progress.md", "README.md", "prompt.md", "build.log", ".gitignore",
+                  ".claude/settings.json"):
+            ok(not roda(x, f, env=env), f"deveria liberar {f} em projects/x")
+        ok(roda(x, "requirements.txt", env=env), "requirements.txt é código")
+        ok(roda(x, "sub/.gitignore", env=env), "config do setup só na raiz do projeto")
+    mundo(corpo)
+
+
+@caso("(p2) projeto da fábrica, orquestrador: fora do projeto negado, inclusive .md/.txt")
+def _p2():
+    def corpo(d, home, env):
+        x = os.path.join(d, "projects", "x")
+        for f in ("../y/README.md", "../y/src/a.ts", "../y/.forge/progress.md", "../y/saida.txt",
+                  "../../CLAUDE.md", "../../templates/x.md", "../../plugins/a.py"):
+            ok(roda(x, f, env=env), f"deveria negar {f} (fora de projects/x)")
+        for f in (os.path.join(home, ".cache", "algo", "a.md"), os.path.join(home, "x.md")):
+            ok(roda(x, f, env=env), f"deveria negar {f} (HOME fora de ~/.claude*)")
+    mundo(corpo)
+
+
+@caso("(p3) projeto da fábrica: /tmp, $TMPDIR e ~/.claude* liberados fora do projeto")
+def _p3():
+    def corpo(d, home, env):
+        x = os.path.join(d, "projects", "x")
+        tmpdir = tempfile.mkdtemp(dir=BASE_FORA_DO_TMP)
+        try:
+            for ag in (None, "dev"):
+                for f in ("/tmp/forge-teste-livre/a.ts", os.path.join(
+                        home, ".claude/projects/-x/memory/a.md"),
+                        os.path.join(home, ".claude-empresa/plans/p.md")):
+                    ok(not roda(x, f, agent_type=ag, env=env), f"deveria liberar {f} ({ag})")
+                ok(roda(x, os.path.join(tmpdir, "a.ts"), agent_type=ag, env=env),
+                   f"sem TMPDIR definido, {tmpdir} está fora ({ag})")
+                ok(not roda(x, os.path.join(tmpdir, "a.ts"), agent_type=ag,
+                            env={**env, "TMPDIR": tmpdir}), f"com TMPDIR, {tmpdir} é livre ({ag})")
+        finally:
+            shutil.rmtree(tmpdir)
+    mundo(corpo)
+
+
+@caso("(p4) projeto da fábrica, subagente: livre no projeto, negado fora")
+def _p4():
+    def corpo(d, home, env):
+        x = os.path.join(d, "projects", "x")
+        for ag in ("dev", "tester"):
+            ok(not roda(x, "src/a.ts", agent_type=ag, env=env), f"{ag} escreve no projeto")
+            ok(roda(x, "../y/src/a.ts", agent_type=ag, env=env), f"{ag} não escreve em y")
+            ok(roda(x, "../y/README.md", agent_type=ag, env=env), f"{ag} não escreve .md de y")
+            ok(roda(x, "../../CLAUDE.md", agent_type=ag, env=env), f"{ag} não escreve na fábrica")
+    mundo(corpo)
+
+
+@caso("(p5) sessão numa subpasta do projeto: contenção pela raiz do projeto")
+def _p5():
+    def corpo(d, home, env):
+        sub = os.path.join(d, "projects", "x", "sub")
+        ok(roda(sub, "../src/a.ts", env=env), "orquestrador: código no projeto segue negado")
+        ok(not roda(sub, "../.forge/progress.md", env=env), ".forge na raiz de x é liberado")
+        ok(not roda(sub, "notas.md", env=env), "markdown na subpasta é liberado")
+        ok(roda(sub, "../../y/README.md", env=env), "y está fora do projeto")
+        ok(not roda(sub, "../src/a.ts", agent_type="dev", env=env), "dev escreve em x")
+        ok(roda(sub, "../../y/a.ts", agent_type="dev", env=env), "dev não escreve em y")
+    mundo(corpo)
+
+
+@caso("(p6) `..` e symlink que saem do projeto são negados")
+def _p6():
+    def corpo(d, home, env):
+        x = os.path.join(d, "projects", "x")
+        y = os.path.join(d, "projects", "y")
+        os.symlink(y, os.path.join(x, "atalho"))
+        os.symlink("/tmp", os.path.join(x, "para-tmp"))
+        for ag in (None, "dev"):
+            ok(roda(x, os.path.join(x, "src", "..", "..", "y", "README.md"), agent_type=ag,
+                    env=env), f"`..` que sai de x deve negar ({ag})")
+            ok(roda(x, "atalho/README.md", agent_type=ag, env=env),
+               f"symlink para y deve negar ({ag})")
+            ok(not roda(x, "para-tmp/a.ts", agent_type=ag, env=env),
+               f"symlink para /tmp cai na exceção do /tmp ({ag})")
+    mundo(corpo)
+
+
+@caso("(p7) fábrica dentro de /tmp: a exceção de /tmp não vaza para a fábrica")
+def _p7():
+    def corpo(d, home, env):
+        x = os.path.join(d, "projects", "x")
+        ok(roda(x, "../y/README.md", env=env), "y continua fora do projeto")
+        ok(roda(x, "../../CLAUDE.md", agent_type="dev", env=env), "fábrica não é /tmp livre")
+        ok(not roda(x, "/tmp/forge-teste-livre/a.ts", env=env), "o resto de /tmp segue livre")
+    mundo(corpo, base=None)
+
+
+@caso("(p8) mensagem da contenção cita projeto, caminho e a fábrica; código cita o dev")
+def _p8():
+    def corpo(d, home, env):
+        x = os.path.join(d, "projects", "x")
+        payload = {"tool_name": "Write", "cwd": x,
+                   "tool_input": {"file_path": os.path.join(d, "projects", "y", "README.md")}}
+        r = subprocess.run(["bash", HOOK], input=json.dumps(payload), capture_output=True,
+                           text=True, env={**os.environ, **env})
+        razao = json.loads(r.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+        for trecho in ("fora da pasta do projeto", "'x'", os.path.realpath(x), "/tmp",
+                       "~/.claude*", os.path.realpath(d), "raiz da fábrica"):
+            ok(trecho in razao, f"faltou {trecho!r} em: {razao}")
+        payload["tool_input"]["file_path"] = os.path.join(x, "src", "a.ts")
+        r = subprocess.run(["bash", HOOK], input=json.dumps(payload), capture_output=True,
+                           text=True, env={**os.environ, **env})
+        razao = json.loads(r.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+        ok("subagente dev" in razao and "projeto da fábrica" in razao, razao)
+    mundo(corpo)
+
+
+@caso("(p9) regressão: fábrica e repo atual seguem iguais (subagente livre, fora da raiz livre)")
+def _p9():
+    for mk in (fabrica, repo):
+        d = mk()
+        try:
+            ok(not roda(d, "../outro/src/a.ts"), f"fora da raiz é livre em {mk.__name__}")
+            ok(not roda(d, "src/a.ts", agent_type="dev"), f"dev livre em {mk.__name__}")
+            ok(roda(d, "src/a.ts"), f"código negado em {mk.__name__}")
+        finally:
+            shutil.rmtree(d)
+    d = fabrica()  # sessão em projects/y de uma fábrica SEM templates/prompt.template.md
+    try:
+        os.remove(os.path.join(d, "templates", "prompt.template.md"))
+        y = os.path.join(d, "projects", "y")
+        os.makedirs(y)
+        ok(not roda(y, "../z/src/a.ts"), "projects/ sem ser fábrica = repo atual (fora livre)")
     finally:
         shutil.rmtree(d)
 
