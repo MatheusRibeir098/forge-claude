@@ -1,9 +1,9 @@
 {
-  "description": "Hooks do Forge — teto de turnos por invocação de subagente (com delegação opcional ao rtk em Bash liberado), bloqueio de escrita de código pelo orquestrador, decisão automática de quando o tester é obrigatório após um dev, e volta do shell da sessão principal à pasta base do projeto. Scripts .sh são chamados via 'bash' e o script .py via 'python3' (em vez de depender do shebang + bit de execução, que a instalação do plugin pode não preservar) — mais robusto entre sistemas operacionais e formas de instalação.",
+  "description": "Hooks do Forge — teto de turnos por invocação de subagente (com delegação opcional ao rtk em Bash liberado), bloqueio de escrita de código pelo orquestrador, decisão automática de quando o tester é obrigatório após um dev (SubagentStop anota a entrega em qualquer profundidade; Stop da raiz não encerra o turno com entrega sem tester; PostToolUse(Agent) marca o tester lançado e cobre CLIs de término síncrono), e volta do shell da sessão principal à pasta base do projeto. Scripts .sh são chamados via 'bash' e o script .py via 'python3' (em vez de depender do shebang + bit de execução, que a instalação do plugin pode não preservar) — mais robusto entre sistemas operacionais e formas de instalação.",
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
@@ -12,7 +12,7 @@
         ]
       },
       {
-        "matcher": "Bash|Read|Edit|Write|Glob|Grep|WebSearch|WebFetch",
+        "matcher": "Bash|Read|Edit|Write|Glob|Grep|WebSearch|WebFetch|mcp__.*",
         "hooks": [
           {
             "type": "command",
@@ -59,7 +59,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|Read|Edit|Write|Glob|Grep|WebSearch|WebFetch",
+        "matcher": "Bash|Read|Edit|Write|Glob|Grep|WebSearch|WebFetch|mcp__.*",
         "hooks": [
           {
             "type": "command",
@@ -82,6 +82,26 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/delega-varredura.py\""
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/require-tester.py\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/require-tester.py\""
           }
         ]
       }

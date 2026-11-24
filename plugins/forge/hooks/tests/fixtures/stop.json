@@ -1,0 +1,16 @@
+{
+  "session_id": "be455779-fd43-4302-b9da-f024ab3d8ba1",
+  "transcript_path": "/home/user/.claude/projects/-home-user-spike/be455779-fd43-4302-b9da-f024ab3d8ba1.jsonl",
+  "cwd": "/home/user/spike",
+  "permission_mode": "bypassPermissions",
+  "prompt_id": "78397f1d-66e9-43f6-b0d3-0859af74f613",
+  "effort": {
+    "level": "high"
+  },
+  "scratchpad_dir": "/tmp/claude-1000/spike/scratchpad",
+  "background_tasks": [],
+  "session_crons": [],
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "Despachei o dev; aguardando."
+}

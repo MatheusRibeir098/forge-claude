@@ -39,10 +39,16 @@ def payload(texto_retorno, *, subagent_type="dev", prompt="implementar a tarefa"
         return d
     d["tool_response"]["status"] = status
     d["tool_response"]["agentType"] = subagent_type
+    # cada invocação real tem `agentId` próprio; o hook deduplica por ele
+    CONTADOR[0] += 1
+    d["tool_response"]["agentId"] = f"a{CONTADOR[0]:016x}"
     d["tool_response"]["content"] = [{"type": "text", "text": texto_retorno}]
     if agent_id:
         d["agent_id"] = agent_id
     return d
+
+
+CONTADOR = [0]
 
 
 def cerca(obj):
@@ -58,7 +64,7 @@ def roda(entrada):
                        env=env)
     ctx = None
     if p.stdout.strip():
-        ctx = json.loads(p.stdout)["hookSpecificOutput"]["additionalContext"]
+        ctx = json.loads(p.stdout).get("hookSpecificOutput", {}).get("additionalContext")
     return p.returncode, p.stdout, ctx
 
 
@@ -264,6 +270,8 @@ def _l():
 def _m():
     base = os.path.join(AQUI, "fixtures")
     for nome in sorted(os.listdir(base)):
+        if not nome.startswith("posttooluse-agent-completed"):
+            continue  # as demais são de SubagentStop/Stop/async, cobertas abaixo
         with open(os.path.join(base, nome), encoding="utf-8") as fh:
             d = json.load(fh)
         rc, _, _ = roda(d)
@@ -422,6 +430,155 @@ def _w():
     rc, out, _ = roda(tester_diz("PASSOU", tipo="outro:tester"))
     ok(rc == 0 and out.strip() == "", f"outro:tester deveria ficar calado: {out!r}")
     ok(pendente(), "outro:tester limpou a pendência")
+
+
+# ------------------------------------- CLI 2.1.331: lançamento assíncrono + SubagentStop/Stop
+# Envelopes em fixtures/ montados com as chaves medidas por hook de log na 2.1.331.
+
+def _fixture(nome):
+    with open(os.path.join(AQUI, "fixtures", nome), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def transcript(briefing):
+    """Transcript do subagente (fixture real) com o briefing trocado, na pasta do caso."""
+    caminho = os.path.join(ESTADO[0], f"transcript-{CONTADOR[0]}.jsonl")
+    CONTADOR[0] += 1
+    with open(os.path.join(AQUI, "fixtures", "subagent-transcript.jsonl"), encoding="utf-8") as fh:
+        linhas = [json.loads(linha) for linha in fh if linha.strip()]
+    linhas[0]["message"]["content"] = briefing
+    with open(caminho, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(json.dumps(linha, ensure_ascii=False) for linha in linhas))
+    return caminho
+
+
+def sub_stop(mensagem, *, tipo="forge:dev", agent_id="ab38432b42d35d52a",
+             briefing="implementar a tarefa"):
+    d = _fixture("subagentstop-dev.json")
+    d.update(agent_type=tipo, agent_id=agent_id, last_assistant_message=mensagem,
+             agent_transcript_path=transcript(briefing))
+    return d
+
+
+def stop(**extra):
+    return _fixture("stop.json") | extra
+
+
+def tester_lancado(agent_id=None):
+    d = _fixture("posttooluse-agent-async-launched.json")
+    if agent_id:
+        d["agent_id"] = agent_id
+    return d
+
+
+def entregas():
+    caminho = os.path.join(ESTADO[0], "pendente")
+    if not os.path.isfile(caminho):
+        return []
+    with open(caminho, encoding="utf-8") as fh:
+        return json.load(fh)["entregas"]
+
+
+def bloqueio(out):
+    d = json.loads(out) if out.strip() else {}
+    return d.get("reason") if d.get("decision") == "block" else None
+
+
+VEREDITO = {"modo": "browser", "falhas": [], "evidencias": [], "recomendacao_para_dev": ""}
+
+
+@caso("(x) SubagentStop dev OK com .tsx + comandos -> pendência browser, sem imprimir")
+def _x():
+    rc, out, _ = roda(sub_stop(cerca(ENTREGA_UI)))
+    ok(rc == 0 and out.strip() == "", f"SubagentStop não pode imprimir: {out!r}")
+    e = entregas()
+    ok(len(e) == 1 and e[0]["modo"] == "browser", f"esperava 1 entrega browser: {e!r}")
+    ok(e[0]["arquivos"] == ["src/components/Card.tsx"] and e[0]["agent_id"], f"{e!r}")
+
+
+@caso("(y) SubagentStop dev BLOQUEADO / tipo alheio -> sem pendência")
+def _y():
+    roda(sub_stop(cerca({"status": "BLOQUEADO", "arquivos_alterados": ["src/A.tsx"],
+                         "comandos_para_subir": ["pnpm dev"], "pendencias": ["x"]})))
+    roda(sub_stop(cerca(ENTREGA_UI), tipo="general-purpose"))
+    roda(sub_stop(cerca(ENTREGA_UI), tipo="outro:dev"))
+    ok(not pendente(), f"criou pendência indevida: {entregas()!r}")
+
+
+@caso("(z) SubagentStop repetido deduplica; retomado com contrato troca a entrega")
+def _z():
+    for _ in range(3):
+        roda(sub_stop(cerca(ENTREGA_UI)))
+    ok(len(entregas()) == 1, f"duplicou: {entregas()!r}")
+    roda(sub_stop("esperando o filho", agent_id="dev2",
+                  briefing="mexer em src/pages/Login.tsx"))
+    ok(len(entregas()) == 2 and "Login.tsx" in entregas()[1]["arquivos"][0],
+       f"fallback pelo transcript não anotou: {entregas()!r}")
+    roda(sub_stop(cerca({"status": "OK", "arquivos_alterados": ["api/routes/users.ts"],
+                         "comandos_para_subir": [], "resumo": "rota"}), agent_id="dev2"))
+    roda(sub_stop("texto solto depois", agent_id="dev2"))
+    e = entregas()
+    ok(len(e) == 2 and e[1]["modo"] == "contrato", f"não trocou nem manteve o contrato: {e!r}")
+
+
+@caso("(aa) tester PASSOU remove a entrega citada no briefing; sem citação, a mais antiga")
+def _aa():
+    roda(sub_stop(cerca(ENTREGA_UI), agent_id="devA"))
+    roda(sub_stop(cerca({"status": "OK", "arquivos_alterados": ["backend/api/routes/users.ts"],
+                         "comandos_para_subir": ["pnpm start"], "resumo": "rota"}),
+                  agent_id="devB"))
+    passou = cerca(VEREDITO | {"veredito": "PASSOU"})
+    roda(sub_stop(passou, tipo="forge:tester", agent_id="t1",
+                  briefing="valide a rota em api/routes/users.ts com curl"))
+    roda(sub_stop(passou, tipo="forge:tester", agent_id="t1",
+                  briefing="valide a rota em api/routes/users.ts com curl"))
+    e = entregas()
+    ok([x["agent_id"] for x in e] == ["devA"], f"removeu a entrega errada ou duas: {e!r}")
+    roda(sub_stop(passou, tipo="forge:tester", agent_id="t2", briefing="valide tudo"))
+    ok(not pendente(), "PASSOU sem citação não removeu a mais antiga")
+
+
+@caso("(ab) tester FALHOU mantém a pendência e o Stop cita a falha")
+def _ab():
+    roda(sub_stop(cerca(ENTREGA_UI)))
+    roda(sub_stop(cerca(VEREDITO | {"veredito": "FALHOU",
+                                    "recomendacao_para_dev": "conter o botão"}),
+                  tipo="forge:tester", agent_id="t1"))
+    ok(len(entregas()) == 1, "FALHOU limpou a pendência")
+    razao = bloqueio(roda(stop())[1])
+    ok(razao and "FALHOU" in razao and "conter o botão" in razao, f"{razao!r}")
+
+
+@caso("(ac) Stop bloqueia com pendência; libera sem ela, com stop_hook_active e já cobrada")
+def _ac():
+    rc, out, _ = roda(stop())
+    ok(rc == 0 and out.strip() == "", f"sem pendência deveria liberar: {out!r}")
+    roda(sub_stop(cerca(ENTREGA_UI)))
+    rc, out, _ = roda(stop(stop_hook_active=True))
+    ok(rc == 0 and out.strip() == "", f"stop_hook_active deveria liberar: {out!r}")
+    em_voo = [{"id": "t", "type": "subagent", "status": "running", "agent_type": "forge:dev"}]
+    ok(roda(stop(background_tasks=em_voo))[1].strip() == "", "bloqueou com dev em voo")
+    razao = bloqueio(roda(stop())[1])
+    ok(razao and "modo browser" in razao and "Card.tsx" in razao, f"não bloqueou: {razao!r}")
+    ok("forge:tester" in razao and "usuário" in razao, f"razão incompleta: {razao!r}")
+    ok(roda(stop())[1].strip() == "", "cobrou a mesma entrega duas vezes")
+    ok(pendente(), "o Stop não pode limpar a pendência")
+
+
+@caso("(ad) async_launched de tester na raiz marca andamento; SubagentStop do tester limpa")
+def _ad():
+    roda(sub_stop(cerca(ENTREGA_UI)))
+    rc, out, _ = roda(tester_lancado(agent_id="sub1"))
+    ok(rc == 0 and out.strip() == "", "aninhado deveria ficar calado")
+    ok(not os.path.isfile(os.path.join(ESTADO[0], "tester-em-andamento")), "aninhado marcou")
+    rc, out, _ = roda(tester_lancado())
+    ok(rc == 0 and out.strip() == "", f"lançamento deveria ser silencioso: {out!r}")
+    ok(roda(stop())[1].strip() == "", "bloqueou com tester em andamento")
+    roda(sub_stop(cerca(VEREDITO | {"veredito": "BLOQUEADO"}), tipo="forge:tester",
+                  agent_id="t1"))
+    ok(pendente(), "BLOQUEADO aprovou por engano")
+    razao = bloqueio(roda(stop())[1])
+    ok(razao and "BLOQUEADO" in razao, f"tester terminou e o Stop não voltou a cobrar: {razao!r}")
 
 
 def main():

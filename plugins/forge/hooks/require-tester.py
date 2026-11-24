@@ -1,23 +1,28 @@
 #!/usr/bin/env python3
-"""PostToolUse (Agent): ao fim de cada `dev`, decide se a tarefa precisa do `tester` e em que
-modo — e injeta isso no orquestrador com os dados prontos, para ele não reler nada.
+"""Obrigação do `tester` depois de cada `dev`: decide se a entrega precisa de validação, em que
+modo, e não deixa o orquestrador encerrar o turno com entrega sem `tester`.
 
-POR QUE A DECISÃO É PELO RETORNO DO `dev`, E NÃO PELO BRIEFING
-Decidir pelo BRIEFING (`tool_input`) exigiria disparar no lançamento do subagente, antes de
-existir entrega, e dependeria de o lançamento ser assíncrono
-(`tool_response` = {"isAsync": true, "status": "async_launched"}). Na CLI 2.1.272 o hook
-dispara no término, com o retorno completo. Compatibilidade, verificada na CLI 2.1.272 com
-payloads capturados:
-  1. `tool_response.status` vem "completed" e o hook dispara no TÉRMINO, com o retorno
-     completo do subagente, e não no lançamento.
-  2. O retorno do `dev` está em `tool_response.content[0].text`, tipicamente dentro de uma
-     cerca ```json (o `dev` costuma escrever texto solto em volta; por isso o parser abaixo
-     tolera cerca e prosa).
-  3. `tool_response` traz ainda `agentType`, `resolvedModel`, `totalTokens`,
-     `totalToolUseCount` e `totalDurationMs` — dá para auditar a invocação aqui.
-  4. O Forge lança subagentes de forma síncrona (sem `run_in_background`). O caso
-     assíncrono aparece como `status` != "completed", e aí ficamos calados.
-Fixtures capturadas em `tests/fixtures/`.
+TRÊS EVENTOS, UM ESTADO POR SESSÃO (o script despacha por `hook_event_name`)
+Na CLI 2.1.331 todo `Agent` lançado pela raiz é ASSÍNCRONO: o `PostToolUse(Agent)` dispara no
+lançamento com `tool_response` = {"isAsync": true, "status": "async_launched"} e o retorno chega
+depois, como notificação. Por isso a decisão saiu do `PostToolUse` e foi para o `SubagentStop`:
+  SubagentStop — dispara em QUALQUER profundidade (Workflow, agente aninhado), com `agent_id`,
+      `agent_type`, `last_assistant_message` e `agent_transcript_path`. `dev`: classifica o
+      retorno e anota a entrega pendente. `tester`: aplica o veredito. NUNCA imprime nada:
+      saída de SubagentStop manteria o SUBAGENTE rodando (doc oficial), não fala com a raiz.
+      Repete para o mesmo `agent_id` quando o agente é retomado (ex.: depois de esperar um
+      filho) — daí a deduplicação por `agent_id` + assinatura do contrato.
+  PostToolUse(Agent) na raiz — `async_launched` de `tester` marca "tester em andamento".
+      `completed` (CLIs antigas, lançamento síncrono, verificado na 2.1.272 com as fixtures
+      `posttooluse-agent-completed*`) segue como antes: classifica, anota pelo MESMO estado e
+      injeta o lembrete com `additionalContext`.
+  Stop (raiz) — com entrega pendente ainda não cobrada, sem `tester` em andamento e sem
+      subagente do Forge em voo, devolve {"decision": "block", "reason": ...}: o orquestrador
+      despacha o `tester` ou explica ao usuário por que não. Com `stop_hook_active` libera
+      sempre (nunca entra em laço) e cada entrega é cobrada UMA vez (o campo `cobrado`), para
+      a guarda não virar ladainha a cada turno depois de o usuário ter decidido.
+O retorno do `dev` vem tipicamente dentro de uma cerca ```json com texto solto em volta; o
+parser abaixo tolera cerca e prosa.
 
 POR QUE ISSO IMPORTA — o custo do palpite pela entrada
 Decidir por uma lista de palavras genéricas (`dashboard`, `layout`, `tela`, `botão`,
@@ -47,23 +52,32 @@ de arquivo com extensão renderizável, sem a lista de palavras genéricas que g
 texto injetado avisa que foi fallback.
 
 ORDEM DOS EVENTOS E OS TRÊS VEREDITOS DO TESTER
-O hook também roda no retorno do `tester` e guarda uma pendência por sessão (ver "estado"):
-  - retorno do `dev` que exige validação -> marca a pendência (reabre, mesmo após um PASSOU);
-  - `tester` PASSOU    -> limpa a pendência (só cobre o que veio ANTES dele);
-  - `tester` FALHOU    -> mantém a pendência e lembra: devolver ao `dev` e revalidar;
-  - `tester` BLOQUEADO -> mantém a pendência e lembra: NÃO é aprovação; resolver o ambiente
-                          ou perguntar ao usuário, nunca seguir adiante.
-Entrega de `dev` só fica aprovada por um PASSOU posterior ao ÚLTIMO retorno de `dev`.
+Cada entrega pendente é {agent_id, modo, arquivos, resumo, cobrado}, uma por `dev`:
+  - retorno do `dev` que exige validação -> anota a entrega (reabre, mesmo após um PASSOU);
+  - `tester` PASSOU    -> remove as entregas cujos arquivos o briefing do `tester` cita; se
+                          nenhuma casar, remove a mais antiga (só cobre o que veio ANTES dele);
+  - `tester` FALHOU    -> mantém e anota o resumo das falhas: devolver ao `dev` e revalidar;
+  - `tester` BLOQUEADO -> mantém e anota o motivo: NÃO é aprovação; resolver o ambiente ou
+                          perguntar ao usuário, nunca seguir adiante.
 
 Saída silenciosa (exit 0) em qualquer payload ilegível: um hook nunca atrapalha o trabalho.
-Só a sessão-raiz orquestra, daí a guarda `agent_id`.
+No `PostToolUse` e no `Stop` só a sessão-raiz orquestra, daí a guarda `agent_id`.
 """
+import collections
+import contextlib
+import hashlib
+import itertools
 import json
 import os
 import pathlib
 import re
 import sys
 import time
+
+try:
+    import fcntl
+except ImportError:  # Windows: sem trava, o estado só perde a garantia contra corrida
+    fcntl = None
 
 # --- classificação de caminho ------------------------------------------------------------
 
@@ -220,16 +234,30 @@ def _lista_de_strings(valor) -> list:
     return saida
 
 
-# --- estado: a pendência de validação, por sessão -----------------------------------------
+# --- estado: as entregas sem validação, por sessão ----------------------------------------
 # Mesmo esquema do `delega-varredura.py` e do `subagent-turn-budget.sh`: `FORGE_STATE_DIR`
 # explícito > `XDG_RUNTIME_DIR` > `TMPDIR` > `/tmp`, sob `forge/validacao/<session_id>`.
-# Um arquivo `pendente` existe enquanto houver entrega de `dev` sem PASSOU do `tester` DEPOIS
-# dela. Os eventos chegam em ordem, então o arquivo basta: `dev` o cria, PASSOU o remove.
+# Agentes aninhados mantêm o `session_id` da raiz, então o estado é um só em qualquer
+# profundidade. Arquivos:
+#   pendente            {"entregas": [...], "ultimo_veredito": {...}}; existe só com entrega
+#   vistos.json         {"<papel>:<agent_id>": assinatura} — dedup do SubagentStop repetido
+#   tester-em-andamento marcado no lançamento assíncrono do `tester`, com validade
+#   .trava              flock: dois `dev` em paralelo terminam juntos
 
 RE_SESSAO_INVALIDA = re.compile(r"[^A-Za-z0-9_-]")
 ARQUIVO_PENDENTE = "pendente"
+ARQUIVO_VISTOS = "vistos.json"
+ARQUIVO_TESTER = "tester-em-andamento"
+ARQUIVO_TRAVA = ".trava"
 IDADE_MAXIMA_S = 24 * 3600
+IDADE_TESTER_S = 2 * 3600  # tester que morreu sem SubagentStop não cala a guarda para sempre
+TETO_ENTREGAS = 20
+TETO_VISTOS = 200
 VEREDITOS = ("PASSOU", "FALHOU", "BLOQUEADO")
+SEM_CONTRATO = "sem-contrato"
+VEREDITO_APLICADO = "veredito"
+
+Decisao = collections.namedtuple("Decisao", "modo texto arquivos resumo")
 
 
 def _diretorio_de_estado(session_id) -> pathlib.Path:
@@ -246,32 +274,174 @@ def _limpar_antigos(pasta: pathlib.Path) -> None:
     limite = time.time() - IDADE_MAXIMA_S
     for item in pasta.iterdir():
         try:
-            if item.is_file() and item.stat().st_mtime < limite:
+            if item.name != ARQUIVO_TRAVA and item.is_file() and item.stat().st_mtime < limite:
                 item.unlink()
         except OSError:
             continue
 
 
-def _marcar_pendente(estado: pathlib.Path, arquivos: list) -> None:
-    """Falha de escrita nunca atrapalha: sem estado o hook só perde a memória."""
+def _ler_json(caminho: pathlib.Path) -> dict:
     try:
-        estado.mkdir(parents=True, exist_ok=True)
-        _limpar_antigos(estado)
-        (estado / ARQUIVO_PENDENTE).write_text(
-            json.dumps({"arquivos": arquivos[:20]}, ensure_ascii=False))
+        valor = json.loads(caminho.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return valor if isinstance(valor, dict) else {}
+
+
+def _gravar_json(caminho: pathlib.Path, valor: dict) -> None:
+    caminho.write_text(json.dumps(valor, ensure_ascii=False), encoding="utf-8")
+
+
+class _Estado:
+    """Entregas pendentes, último veredito e assinaturas já vistas de uma sessão."""
+
+    def __init__(self, pasta: pathlib.Path):
+        self.pasta = pasta
+        dados = _ler_json(pasta / ARQUIVO_PENDENTE)
+        self.entregas = [e for e in dados.get("entregas") or [] if isinstance(e, dict)]
+        veredito = dados.get("ultimo_veredito")
+        self.ultimo_veredito = veredito if isinstance(veredito, dict) else None
+        self.vistos = _ler_json(pasta / ARQUIVO_VISTOS)
+
+    def trocar_entrega(self, agent_id: str, decisao) -> None:
+        """A entrega de um `agent_id` é sempre a do último retorno dele (agente retomado)."""
+        if agent_id:
+            self.entregas = [e for e in self.entregas if e.get("agent_id") != agent_id]
+        if decisao is not None:
+            self.entregas.append({"agent_id": agent_id, "modo": decisao.modo,
+                                  "arquivos": decisao.arquivos[:20],
+                                  "resumo": decisao.resumo, "cobrado": False})
+
+    def remover(self, removidas: list) -> None:
+        self.entregas = [e for e in self.entregas if e not in removidas]
+
+    def gravar(self) -> None:
+        try:
+            if self.entregas:
+                _gravar_json(self.pasta / ARQUIVO_PENDENTE, {
+                    "entregas": self.entregas[-TETO_ENTREGAS:],
+                    "ultimo_veredito": self.ultimo_veredito})
+            else:
+                (self.pasta / ARQUIVO_PENDENTE).unlink(missing_ok=True)
+            _gravar_json(self.pasta / ARQUIVO_VISTOS,
+                         dict(list(self.vistos.items())[-TETO_VISTOS:]))
+        except OSError:
+            return
+
+
+@contextlib.contextmanager
+def _estado_travado(pasta: pathlib.Path):
+    """Lê sob trava exclusiva e regrava ao sair. Falha de disco nunca atrapalha: sem estado o
+    hook só perde a memória."""
+    try:
+        pasta.mkdir(parents=True, exist_ok=True)
+        _limpar_antigos(pasta)
+        trava = open(pasta / ARQUIVO_TRAVA, "a", encoding="utf-8")
+    except OSError:
+        yield _Estado(pasta)
+        return
+    with trava:
+        if fcntl is not None:
+            fcntl.flock(trava.fileno(), fcntl.LOCK_EX)
+        estado = _Estado(pasta)
+        yield estado
+        estado.gravar()
+
+
+def _marcar_tester_em_andamento(pasta: pathlib.Path) -> None:
+    try:
+        pasta.mkdir(parents=True, exist_ok=True)
+        (pasta / ARQUIVO_TESTER).write_text(str(time.time()), encoding="utf-8")
     except OSError:
         return
 
 
-def _limpar_pendente(estado: pathlib.Path) -> None:
+def _limpar_tester_em_andamento(pasta: pathlib.Path) -> None:
     try:
-        (estado / ARQUIVO_PENDENTE).unlink()
+        (pasta / ARQUIVO_TESTER).unlink(missing_ok=True)
     except OSError:
         return
 
 
-def _ha_pendente(estado: pathlib.Path) -> bool:
-    return (estado / ARQUIVO_PENDENTE).is_file()
+def _tester_marcado(pasta: pathlib.Path) -> bool:
+    try:
+        return time.time() - (pasta / ARQUIVO_TESTER).stat().st_mtime < IDADE_TESTER_S
+    except OSError:
+        return False
+
+
+def _subagente_do_forge_em_voo(background_tasks) -> bool:
+    """`dev`/`tester` ainda rodando: a raiz acorda de novo quando ele terminar, e o próximo
+    Stop reavalia. Cobrar agora seria cobrar retrato intermediário."""
+    for tarefa in background_tasks if isinstance(background_tasks, list) else []:
+        if isinstance(tarefa, dict) and _papel_do_agente(tarefa.get("agent_type")) in (
+                "dev", "tester"):
+            return True
+    return False
+
+
+def _assinatura(retorno) -> str:
+    if not isinstance(retorno, dict):
+        return SEM_CONTRATO
+    canonico = json.dumps(retorno, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha1(canonico.encode("utf-8")).hexdigest()[:16]
+
+
+def _registrar_dev(pasta: pathlib.Path, agent_id: str, retorno, decisao) -> None:
+    """Anota (ou troca) a entrega do `agent_id`. Repetição da mesma assinatura não muda nada,
+    e retorno fora do contrato nunca rebaixa um agente que já devolveu contrato."""
+    chave = f"dev:{agent_id}"
+    assinatura = _assinatura(retorno)
+    with _estado_travado(pasta) as estado:
+        anterior = estado.vistos.get(chave) if agent_id else None
+        if anterior == assinatura or (assinatura == SEM_CONTRATO and anterior is not None):
+            return
+        if agent_id:
+            estado.vistos[chave] = assinatura
+        estado.trocar_entrega(agent_id, decisao)
+
+
+def _citado(arquivo: str, briefing: str) -> bool:
+    """Até os dois últimos segmentos do caminho: o briefing do `tester` raramente repete a
+    raiz que o `dev` usou, e só o nome (`index.ts`) casaria demais."""
+    sufixo = "/".join(arquivo.replace("\\", "/").split("/")[-2:])
+    return bool(sufixo) and sufixo in briefing
+
+
+def _entregas_cobertas(entregas: list, briefing: str) -> list:
+    cobertas = [e for e in entregas
+                if any(_citado(a, briefing) for a in e.get("arquivos") or [])]
+    return cobertas or entregas[:1]
+
+
+def _resumo_veredito(veredito: str, retorno: dict) -> str:
+    if veredito == "BLOQUEADO":
+        bloqueio = retorno.get("bloqueio") if isinstance(retorno.get("bloqueio"), dict) else {}
+        motivo = bloqueio.get("o_que_impediu")
+    else:
+        motivo = retorno.get("recomendacao_para_dev")
+    return _corte(motivo or _resumo_falhas(retorno) or "sem detalhe", 160)
+
+
+def _registrar_veredito(pasta: pathlib.Path, agent_id: str, retorno, ler_briefing) -> bool:
+    """Aplica o veredito uma vez por `agent_id`. Devolve se havia entrega pendente antes."""
+    chave = f"tester:{agent_id}"
+    with _estado_travado(pasta) as estado:
+        havia = bool(estado.entregas)
+        if retorno is None or (agent_id and estado.vistos.get(chave) == VEREDITO_APLICADO):
+            return havia  # sem veredito (talvez intermediário) ou repetição
+        if agent_id:
+            estado.vistos[chave] = VEREDITO_APLICADO
+        veredito = str(retorno.get("veredito")).strip().upper()
+        if veredito == "PASSOU":
+            estado.remover(_entregas_cobertas(estado.entregas, ler_briefing()))
+            estado.ultimo_veredito = None
+            return havia
+        estado.ultimo_veredito = {"veredito": veredito,
+                                  "resumo": _resumo_veredito(veredito, retorno)}
+        for entrega in estado.entregas:
+            entrega["cobrado"] = False  # reprovação reabre a cobrança no próximo Stop
+        return havia
 
 
 # --- texto injetado ----------------------------------------------------------------------
@@ -336,11 +506,46 @@ RE_ARQ_RENDERIZAVEL = re.compile(
     r"[\w./@-]+\.(?:tsx|jsx|vue|svelte|html|css|scss|astro)\b", re.I)
 
 
-def _texto_fallback(inp: dict):
+def _briefing_da_entrada(inp: dict) -> str:
+    return " ".join(str(inp.get(k) or "") for k in ("prompt", "description"))
+
+
+LINHAS_ATE_O_BRIEFING = 50
+
+
+def _texto_de_usuario(linha: str) -> str:
+    try:
+        registro = json.loads(linha)
+    except ValueError:
+        return ""
+    mensagem = registro.get("message") if isinstance(registro, dict) else None
+    if not isinstance(mensagem, dict) or mensagem.get("role") != "user":
+        return ""
+    conteudo = mensagem.get("content")
+    if isinstance(conteudo, str):
+        return conteudo
+    return _texto_do_retorno({"content": conteudo if isinstance(conteudo, list) else []})
+
+
+def _briefing_do_transcript(caminho) -> str:
+    """Primeira mensagem de usuário do JSONL do subagente: é o briefing que ele recebeu."""
+    if not isinstance(caminho, str) or not caminho:
+        return ""
+    try:
+        with open(os.path.expanduser(caminho), encoding="utf-8") as fh:
+            for linha in itertools.islice(fh, LINHAS_ATE_O_BRIEFING):
+                texto = _texto_de_usuario(linha)
+                if texto:
+                    return texto
+    except (OSError, UnicodeDecodeError):
+        return ""
+    return ""
+
+
+def _texto_fallback(briefing: str):
     """O `dev` não seguiu o contrato JSON. Só nome de arquivo renderizável no briefing —
     nada de palavra genérica, que transformaria o lembrete em ruído.
     Devolve (texto, arquivos); (None, []) quando não há o que validar."""
-    briefing = " ".join(str(inp.get(k) or "") for k in ("prompt", "description"))
     if not briefing.strip():
         return None, []
 
@@ -367,44 +572,57 @@ def _texto_fallback(inp: dict):
 
 # --- retorno do dev: classificação -------------------------------------------------------
 
+def _motivo_contrato(renderizaveis: list, externos: list) -> str:
+    if renderizaveis:
+        # Renderizável sem comando para subir: ainda é superfície, mas o print não se sustenta.
+        return ("alterou arquivo de interface sem devolver comando para subir "
+                f"({_resumo_lista(renderizaveis, 3)})")
+    if externos:
+        return f"alterou superfície externa verificável ({_resumo_lista(externos, 3)})"
+    return "devolveu comando para subir a aplicação"
+
+
 def _classificar_dev(retorno: dict):
-    """(texto, arquivos) da validação que o retorno do `dev` exige; (None, []) se nenhuma."""
+    """`Decisao` da validação que o retorno do `dev` exige; None se nenhuma."""
     arquivos = _lista_de_strings(retorno.get("arquivos_alterados"))
     comandos = _lista_de_strings(retorno.get("comandos_para_subir"))
     relevantes = [a for a in arquivos if not _descartavel(a)]
     renderizaveis = [a for a in relevantes if _renderizavel(a)]
     externos = [a for a in relevantes if _superficie_externa(a)]
+    resumo = _corte(retorno.get("resumo") or "sem resumo", 100)
 
     if renderizaveis and comandos:
-        return _texto_browser(arquivos, comandos, renderizaveis), arquivos
-    if renderizaveis:
-        # Renderizável sem comando para subir: ainda é superfície, mas o print não se sustenta.
-        return _texto_contrato(
-            arquivos, comandos,
-            "alterou arquivo de interface sem devolver comando para subir "
-            f"({_resumo_lista(renderizaveis, 3)})"), arquivos
-    if externos:
-        return _texto_contrato(
-            arquivos, comandos,
-            f"alterou superfície externa verificável ({_resumo_lista(externos, 3)})"), arquivos
-    if comandos and relevantes:
-        return _texto_contrato(
-            arquivos, comandos, "devolveu comando para subir a aplicação"), arquivos
-    return None, []  # refactor, teste, doc, config de build ou tipo: nada a validar
+        return Decisao("browser", _texto_browser(arquivos, comandos, renderizaveis),
+                       arquivos, resumo)
+    if renderizaveis or externos or (comandos and relevantes):
+        texto = _texto_contrato(arquivos, comandos, _motivo_contrato(renderizaveis, externos))
+        return Decisao("contrato", texto, arquivos, resumo)
+    return None  # refactor, teste, doc, config de build ou tipo: nada a validar
 
 
-def _tratar_dev(inp: dict, resp: dict, estado: pathlib.Path) -> int:
-    retorno = _retorno_do_dev(_texto_do_retorno(resp))
+def _decidir_dev(retorno, ler_briefing):
+    """`ler_briefing` só é chamado no fallback: no SubagentStop ele lê o transcript."""
     if not isinstance(retorno, dict):
-        texto, arquivos = _texto_fallback(inp)
-    elif str(retorno.get("status") or "").strip().upper() == "BLOQUEADO":
-        return 0  # não há entrega para validar
-    else:
-        texto, arquivos = _classificar_dev(retorno)
-    if texto is None:
-        return 0
-    _marcar_pendente(estado, arquivos)  # entrega nova: um PASSOU anterior não a cobre
-    return _emitir(texto)
+        texto, achados = _texto_fallback(ler_briefing())
+        if texto is None:
+            return None
+        return Decisao("browser", texto, achados, "retorno fora do contrato (fallback)")
+    if str(retorno.get("status") or "").strip().upper() == "BLOQUEADO":
+        return None  # não há entrega para validar
+    return _classificar_dev(retorno)
+
+
+def _agent_id_da_resposta(resp: dict) -> str:
+    agent_id = resp.get("agentId")
+    return agent_id if isinstance(agent_id, str) else ""
+
+
+def _tratar_dev(inp: dict, resp: dict, pasta: pathlib.Path) -> int:
+    retorno = _retorno_do_dev(_texto_do_retorno(resp))
+    decisao = _decidir_dev(retorno, lambda: _briefing_da_entrada(inp))
+    # entrega nova: um PASSOU anterior não a cobre
+    _registrar_dev(pasta, _agent_id_da_resposta(resp), retorno, decisao)
+    return _emitir(decisao.texto) if decisao else 0
 
 
 # --- retorno do tester: veredito ---------------------------------------------------------
@@ -466,14 +684,16 @@ TEXTO_SEM_VEREDITO = (
 )
 
 
-def _tratar_tester(resp: dict, estado: pathlib.Path) -> int:
+def _tratar_tester(inp: dict, resp: dict, pasta: pathlib.Path) -> int:
+    _limpar_tester_em_andamento(pasta)
     retorno = _retorno_do_tester(_texto_do_retorno(resp))
+    havia_pendencia = _registrar_veredito(pasta, _agent_id_da_resposta(resp), retorno,
+                                          lambda: _briefing_da_entrada(inp))
     if retorno is None:
-        return _emitir(TEXTO_SEM_VEREDITO) if _ha_pendente(estado) else 0
+        return _emitir(TEXTO_SEM_VEREDITO) if havia_pendencia else 0
     veredito = str(retorno.get("veredito")).strip().upper()
     if veredito == "PASSOU":
-        _limpar_pendente(estado)  # só aprova o que veio ANTES dele: dev novo reabre
-        return 0
+        return 0  # só aprova o que veio ANTES dele: dev novo reabre
     return _emitir(_texto_falhou(retorno) if veredito == "FALHOU" else _texto_bloqueado(retorno))
 
 
@@ -485,7 +705,96 @@ def _papel_do_agente(subagent_type) -> str:
     return papel if namespace in ("", "forge") else ""
 
 
+# --- SubagentStop: qualquer profundidade, nunca imprime ----------------------------------
+
+def _tratar_subagent_stop(d: dict) -> int:
+    papel = _papel_do_agente(d.get("agent_type"))
+    if papel not in ("dev", "tester"):
+        return 0
+    agent_id = d.get("agent_id") if isinstance(d.get("agent_id"), str) else ""
+    mensagem = d.get("last_assistant_message")
+    mensagem = mensagem if isinstance(mensagem, str) else ""
+    pasta = _diretorio_de_estado(d.get("session_id"))
+
+    def ler_briefing() -> str:
+        return _briefing_do_transcript(d.get("agent_transcript_path"))
+
+    if papel == "dev":
+        retorno = _retorno_do_dev(mensagem)
+        _registrar_dev(pasta, agent_id, retorno, _decidir_dev(retorno, ler_briefing))
+    else:
+        _limpar_tester_em_andamento(pasta)
+        _registrar_veredito(pasta, agent_id, _retorno_do_tester(mensagem), ler_briefing)
+    return 0  # qualquer saída aqui manteria o SUBAGENTE rodando, não falaria com a raiz
+
+
+# --- Stop: a raiz não encerra o turno com entrega sem tester -----------------------------
+
+def _razao_do_bloqueio(entregas: list, ultimo_veredito) -> str:
+    linhas = [f"  - modo {e.get('modo')}: {_resumo_lista(e.get('arquivos') or [], 3)} "
+              f"({e.get('resumo')})" for e in entregas[:5]]
+    veredito = ""
+    if ultimo_veredito:
+        veredito = (f"\nÚltimo tester: {ultimo_veredito.get('veredito')} — "
+                    f"{ultimo_veredito.get('resumo')}")
+    return (
+        "[Forge] Entrega de `dev` sem validação do `tester`:\n" + "\n".join(linhas) + veredito
+        + "\nDespache o `forge:tester` no modo indicado (com os arquivos e os "
+        "comandos_para_subir do `dev`) ou explique ao usuário por que esta entrega não "
+        "precisa de validação. Não a dê como concluída antes."
+    )
+
+
+def _tratar_stop(d: dict) -> int:
+    if d.get("agent_id") or d.get("stop_hook_active"):
+        return 0  # `stop_hook_active`: já continuamos uma vez por causa de Stop; nunca em laço
+    pasta = _diretorio_de_estado(d.get("session_id"))
+    if not (pasta / ARQUIVO_PENDENTE).is_file():
+        return 0
+    if _tester_marcado(pasta) or _subagente_do_forge_em_voo(d.get("background_tasks")):
+        return 0
+    with _estado_travado(pasta) as estado:
+        novas = [e for e in estado.entregas if not e.get("cobrado")]
+        for entrega in novas:
+            entrega["cobrado"] = True
+        ultimo_veredito = estado.ultimo_veredito
+    if not novas:
+        return 0
+    print(json.dumps({"decision": "block", "reason": _razao_do_bloqueio(novas, ultimo_veredito)},
+                     ensure_ascii=False))
+    return 0
+
+
+# --- PostToolUse(Agent): lançamento assíncrono e término síncrono (CLIs antigas) ---------
+
+def _tratar_post_tool_use(d: dict) -> int:
+    # Só a sessão-raiz orquestra; um subagente que despache outro não é o nosso caso.
+    if d.get("agent_id"):
+        return 0
+    inp = d.get("tool_input")
+    if not isinstance(inp, dict):
+        return 0
+    tipo = _papel_do_agente(inp.get("subagent_type"))
+    resp = d.get("tool_response")
+    if tipo not in ("dev", "tester") or not isinstance(resp, dict):
+        return 0
+    pasta = _diretorio_de_estado(d.get("session_id"))
+    status = resp.get("status") or ""
+    if status == "async_launched":
+        if tipo == "tester":
+            _marcar_tester_em_andamento(pasta)
+        return 0  # o retorno chega no SubagentStop
+    if status != "completed":
+        return 0  # erro ou cancelado: não há entrega nem veredito para classificar
+    if tipo == "tester":
+        return _tratar_tester(inp, resp, pasta)
+    return _tratar_dev(inp, resp, pasta)
+
+
 # --- entrada -----------------------------------------------------------------------------
+
+TRATADORES = {"SubagentStop": _tratar_subagent_stop, "Stop": _tratar_stop}
+
 
 def main() -> int:
     try:
@@ -494,30 +803,9 @@ def main() -> int:
         return 0  # payload ilegível nunca atrapalha o trabalho
     if not isinstance(d, dict):
         return 0
-
-    # Só a sessão-raiz orquestra; um subagente que despache outro não é o nosso caso.
-    if d.get("agent_id"):
-        return 0
-
-    inp = d.get("tool_input")
-    if not isinstance(inp, dict):
-        return 0
-    tipo = _papel_do_agente(inp.get("subagent_type"))
-    if tipo not in ("dev", "tester"):
-        return 0
-
-    resp = d.get("tool_response")
-    if not isinstance(resp, dict):
-        return 0
-    # 2.1.272: "completed" é o término síncrono com retorno. Qualquer outro estado
-    # (async_launched, error, cancelado) não tem entrega nem veredito para classificar.
-    if (resp.get("status") or "") != "completed":
-        return 0
-
-    estado = _diretorio_de_estado(d.get("session_id"))
-    if tipo == "tester":
-        return _tratar_tester(resp, estado)
-    return _tratar_dev(inp, resp, estado)
+    evento = d.get("hook_event_name")
+    tratador = TRATADORES.get(evento if isinstance(evento, str) else "", _tratar_post_tool_use)
+    return tratador(d)
 
 
 if __name__ == "__main__":
