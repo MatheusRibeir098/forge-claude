@@ -39,7 +39,9 @@ TURN_BUCKETS = [(1, 10), (11, 30), (31, 60), (61, 120), (121, 10**9)]
 # aqui). O hook mede chamadas de ferramenta porque o payload não expõe turnos; a razão adotada
 # é ~1,73 turno por chamada de ferramenta, e é essa razão que usamos para
 # converter o teto para turnos (a unidade que este script mede). É uma aproximação, não uma
-# leitura direta do transcript — trate como estimativa.
+# leitura direta do transcript — trate como estimativa. As chamadas `mcp__*` contam na conta
+# do hook para os papéis do Forge (dev, tester, scout); para os demais agentes são ignoradas.
+# Tester: aviso em 180 e teto em 250 (os de dev e scout não mudaram).
 TURNS_PER_TOOLCALL = 1.73
 
 
@@ -55,7 +57,7 @@ def role_cap_toolcalls(subagent_type: str) -> int:
     if t.startswith("forge-visual:"):
         return 70 if "tester" in t else 130
     if t == "tester":
-        return 65
+        return 250
     if t == "scout":
         return 40
     if t == "dev":

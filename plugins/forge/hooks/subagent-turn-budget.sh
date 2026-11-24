@@ -41,7 +41,10 @@
 # segue nativo — o rtk nunca decide sozinho o que reescrever aqui.
 #
 # A sessão-raiz (orquestrador) não tem agent_id no payload e é ignorada aqui — seu
-# limite é a compactação da própria sessão, não este contador.
+# limite é a compactação da própria sessão, não este contador. Também não delegamos o Bash
+# dela ao rtk: isso é do rtk-root.sh (saída 11 do Python, ver EXIT_SKIP_RTK).
+#
+# Chamadas `mcp__*` contam só para dev, tester e scout; outros agentes as ignoram.
 
 payload=$(cat)
 # rtk é opcional: usa $FORGE_RTK_BIN se definido, senão procura `rtk` no PATH, senão
@@ -93,8 +96,18 @@ role       = papel if namespace in ("", "forge") else "outro"
 is_visual  = agent_full.startswith("forge-visual:")
 event      = d.get("hook_event_name") or ""
 
-# Sem agent_id => sessão-raiz (o Forge). Não contamos o orquestrador.
+# Código de saída 11 = "nada a fazer e o shell NÃO delega ao rtk". Sem agent_id => sessão-raiz
+# (o Forge): não contamos o orquestrador, e quem reescreve o Bash da raiz é o rtk-root.sh.
+# Dois hooks reescrevendo o mesmo comando competiriam entre si (e, com o cwd fora da raiz,
+# com o `cd` do volta-pasta-base.py).
+EXIT_SKIP_RTK = 11
 if not agent_id:
+    sys.exit(EXIT_SKIP_RTK)
+
+# Chamadas `mcp__*` só entram na conta dos papéis do Forge (dev, tester, scout). Agentes
+# genéricos e de outros plugins mantêm a contagem nativa e ignoram o MCP.
+is_mcp = (d.get("tool_name") or "").startswith("mcp__")
+if is_mcp and (is_visual or role not in ("dev", "tester", "scout")):
     sys.exit(0)
 
 # Tetos em CHAMADAS DE FERRAMENTA (~1,73 turno cada). Ajustáveis por env.
@@ -116,7 +129,9 @@ if is_visual:
 elif role == "tester":
     # Sobe servidor, roda E2E e dirige o navegador: precisa de mais fôlego, por isso o
     # teto é folgado.
-    warn, cap = env_int("FORGE_TESTER_WARN", 45), env_int("FORGE_TESTER_CAP", 65)
+    # As chamadas MCP (claude-in-chrome) contam, e um teste longo no navegador passa de cem
+    # chamadas com folga; 250 serve de freio para fuga de controle, não de meta.
+    warn, cap = env_int("FORGE_TESTER_WARN", 180), env_int("FORGE_TESTER_CAP", 250)
 elif role == "scout":
     # Varredura tem muitas chamadas baratas (Glob/Grep/Read com limit) e roda em haiku, o
     # modelo mais barato do time. As chamadas são curtas — o teto sobra de propósito.
@@ -174,7 +189,12 @@ if event == "PreToolUse" and role == "dev" and not is_visual and (d.get("tool_na
     # de `vitest` e de `vite.config.ts`, e `dev` casaria em `grep -rn dev src/`.
     SERV_BIN = _re.compile(r"(?:^|[\s;&|(])(?:vite(?![\w.\-/])(?!\s+build\b)|uvicorn|gunicorn"
                            r"|next\s+(?:dev|start)|flask\s+run|tsx\s+src/index"
-                           r"|http\.server)", _re.I)
+                           r"|http\.server|deno\s+(?:run|serve)(?=\s|$)"
+                           r"|npx\s+(?:-\S+\s+)*(?:serve|http-server)(?=\s|$)"
+                           r"|python[\d.]*(?:\s+-\S+)*\s+(?:\S*/)?(?:app|server)\.py(?=\s|$)"
+                           r"|python[\d.]*(?:\s+-\S+)*\s+(?:\S*/)?manage\.py\s+runserver"
+                           r"|node(?:\s+-\S+)*\s+(?:\S*/)?(?:server|app|index|main)"
+                           r"\.(?:js|mjs|cjs|ts)(?=\s|$|[;&|)]))", _re.I)
     SERV_PKG = _re.compile(r"(?:^|[\s;&|(])(?:pnpm|npm|yarn|bun|npx)\s+"
                            r"(?:run\s+|exec\s+)?(?:dev|start|preview|serve)(?=\s|$)", _re.I)
     BROWSER = _re.compile(r"\b(playwright|chromium|puppeteer|selenium)\b", _re.I)
@@ -286,6 +306,8 @@ decision=$?
 
 # Teto estourado: o deny já foi impresso. Nada mais a fazer.
 [ "$decision" -eq 10 ] && exit 0
+# Raiz (11): quem reescreve o Bash dela é o rtk-root.sh; aqui não delegamos.
+[ "$decision" -eq 11 ] && exit 0
 
 # Caminho liberado: se for um Bash no PreToolUse, deixa o rtk compactar a saída.
 event=$(FORGE_HOOK_PAYLOAD="$payload" python3 -c '

@@ -101,17 +101,20 @@ def _():
         ok(out is None, f"tester pode subir servidor: {out!r}")
 
 
-@caso("forge:tester recebe o teto do tester (aviso 45, teto 65)")
+@caso("forge:tester recebe o teto do tester (aviso 180, teto 250)")
 def _():
     with Estado() as e:
-        ctx = aviso(e, "forge:tester", 45)
-        ok(ctx_cita(ctx, 45, 65), f"aviso inesperado: {ctx!r}")
+        ctx = aviso(e, "forge:tester", 180)
+        ok(ctx_cita(ctx, 180, 250), f"aviso inesperado: {ctx!r}")
+        ok(aviso(e, "forge:tester", 45) is None, "tester não deveria avisar com 45")
+        rc, out = roda(e, "PreToolUse", "forge:tester", contador=65)
+        ok(out is None, f"tester com 65 chamadas não deveria ser negado: {out!r}")
 
 
 @caso("aviso do tester: FALHOU se achou defeito, BLOQUEADO se não, sem PARCIAL")
 def _():
     with Estado() as e:
-        ctx = aviso(e, "forge:tester", 45)
+        ctx = aviso(e, "forge:tester", 180)
         for trecho in ("FALHOU", "BLOQUEADO", "teto de turnos esgotado", "`falhas`",
                        "`evidencias`"):
             ok(trecho in ctx, f"aviso do tester sem {trecho!r}: {ctx!r}")
@@ -197,7 +200,7 @@ def _():
 @caso("teto esgotado do tester: FALHOU se achou defeito, BLOQUEADO se não, sem PARCIAL")
 def _():
     with Estado() as e:
-        razao = _nega_no_teto(e, "forge:tester", 65)
+        razao = _nega_no_teto(e, "forge:tester", 250)
         for trecho in ("FALHOU", "BLOQUEADO", "bloqueio.o_que_impediu", "teto de turnos esgotado",
                        "`evidencias`", "`falhas`", "defeito"):
             ok(trecho in razao, f"tester: mensagem sem {trecho!r}: {razao!r}")
@@ -228,6 +231,77 @@ def _():
         r = subprocess.run(["bash", HOOK], input=json.dumps(entrada), capture_output=True,
                            text=True, env=_env(e))
         ok(r.returncode == 0 and not r.stdout.strip(), f"deveria ficar calado: {r.stdout!r}")
+
+
+def _roda_raw(estado, entrada, rtk=None):
+    env = _env(estado)
+    if rtk:
+        env["FORGE_RTK_BIN"] = rtk
+    return subprocess.run(["bash", HOOK], input=json.dumps(entrada), capture_output=True,
+                          text=True, env=env)
+
+
+@caso("sessão-raiz não delega o Bash ao rtk (quem cuida é o rtk-root.sh)")
+def _():
+    with Estado() as e:
+        fake = os.path.join(e, "fake-rtk")
+        with open(fake, "w") as f:
+            f.write("#!/usr/bin/env bash\necho RTK-CHAMADO\n")
+        os.chmod(fake, 0o755)
+        base = {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                "tool_input": {"command": "git status"}, "session_id": "s"}
+        raiz = _roda_raw(e, base, rtk=fake)
+        ok(raiz.returncode == 0 and not raiz.stdout.strip(),
+           f"raiz não deveria chamar o rtk: {raiz.stdout!r}")
+        sub = _roda_raw(e, dict(base, agent_id="agente1", agent_type="forge:dev"), rtk=fake)
+        ok("RTK-CHAMADO" in sub.stdout, f"controle: subagente deveria delegar: {sub.stdout!r}")
+
+
+@caso("MCP conta para dev, tester e scout (com ou sem forge:) e é ignorado nos demais")
+def _():
+    with Estado() as e:
+        for tipo, warn, cap in (("forge:tester", 180, 250), ("tester", 180, 250),
+                                ("forge:dev", 25, 35), ("dev", 25, 35),
+                                ("forge:scout", 28, 40), ("scout", 28, 40)):
+            _, out = roda(e, "PostToolUse", tipo, contador=warn - 1, tool="mcp__x__y")
+            ok(out and ctx_cita(out["additionalContext"], warn, cap),
+               f"{tipo}: MCP deveria contar e avisar em {warn}: {out!r}")
+        _, out = roda(e, "PreToolUse", "forge:tester", contador=250, tool="mcp__x__y")
+        ok(out and out["permissionDecision"] == "deny", "tester no teto: MCP deveria ser negado")
+        for tipo in ("general-purpose", "outro:dev", "outro:tester", "forge-visual:visual-dev"):
+            _, out = roda(e, "PostToolUse", tipo, contador=29, tool="mcp__x__y")
+            ok(out is None, f"{tipo}: MCP deveria ser ignorado: {out!r}")
+            with open(os.path.join(e, "agente1")) as f:
+                ok(f.read() == "29", f"{tipo}: contador não deveria mudar")
+            _, out = roda(e, "PreToolUse", tipo, contador=999, tool="mcp__x__y")
+            ok(out is None, f"{tipo}: MCP não deveria ser negado no teto: {out!r}")
+        _, out = roda(e, "PostToolUse", "general-purpose", contador=29, tool="Read")
+        ok(out and ctx_cita(out["additionalContext"], 30, 40),
+           "genérico continua contando ferramentas nativas")
+
+
+@caso("servidor do dev: bloqueia entradas de servidor/app, libera build e teste")
+def _():
+    barrar = ("node server.js", "node src/index.ts", "node app.mjs", "node --watch main.cjs",
+              "cd api && node ./dist/server.js", "bun run dev", "bun run start", "bun run serve",
+              "deno run main.ts", "deno serve app.ts", "python app.py", "python3 server.py",
+              "python3 src/app.py --port 8", "python manage.py runserver",
+              "python -m http.server", "flask run", "uvicorn main:app", "gunicorn app:app",
+              "npx serve", "npx http-server .", "npx -y serve dist", "uv run python app.py")
+    liberar = ("node scripts/build.js", "node --test", "node --test server.test.js",
+               "python -m pytest", "python3 -m pytest tests/test_app.py", "bun test",
+               "bun run build", "deno test", "python scripts/gen.py",
+               "node scripts/index-docs.js", "node -e 1", "python manage.py migrate")
+    with Estado() as e:
+        for cmd in barrar:
+            _, out = roda(e, "PreToolUse", "forge:dev", contador=1, tool="Bash", command=cmd)
+            ok(out and out["permissionDecision"] == "deny", f"deveria barrar {cmd!r}")
+        for cmd in liberar:
+            _, out = roda(e, "PreToolUse", "forge:dev", contador=1, tool="Bash", command=cmd)
+            ok(out is None, f"{cmd!r} não deveria barrar: {out!r}")
+        _, out = roda(e, "PreToolUse", "forge:tester", contador=1, tool="Bash",
+                      command="node server.js")
+        ok(out is None, "tester pode subir servidor")
 
 
 def main():
