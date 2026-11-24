@@ -4,7 +4,7 @@ export const meta = {
   whenToUse: 'Quando o Forge precisa de uma resposta confiável que cruza várias partes de um código ou de uma documentação e quer cada achado checado por um scout cético antes de chegar à sessão-raiz',
   phases: [
     { title: 'Varredura', detail: 'um forge:scout por frente' },
-    { title: 'Verificação', detail: 'um forge:scout cético por achado (até 8 por frente) tenta refutá-lo lendo o lugar citado' },
+    { title: 'Verificação', detail: 'um forge:scout cético por frente confere em lote os achados dela (até 8), lendo os lugares citados, e devolve um veredito por achado' },
     { title: 'Completude', detail: 'um forge:scout aponta o que a pergunta pede e os achados confirmados não cobrem' },
   ],
 }
@@ -26,7 +26,8 @@ const SCOUT_SCHEMA = {
       items: {
         type: 'object',
         properties: { o_que: { type: 'string' }, onde: { type: 'string' }, detalhe: { type: 'string' } },
-        required: ['o_que', 'onde'],
+        required: ['o_que', 'onde', 'detalhe'],
+        additionalProperties: false,
       },
     },
     caminhos_relevantes: LISTA_DE_TEXTOS,
@@ -36,14 +37,24 @@ const SCOUT_SCHEMA = {
   required: ['status', 'resposta', 'achados'],
 }
 
-const REFUTACAO_SCHEMA = {
+const VEREDITOS_SCHEMA = {
   type: 'object',
   properties: {
-    refutado: { type: 'boolean' },
-    motivo: { type: 'string' },
-    evidencia: { type: 'string' },
+    vereditos: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          indice: { type: 'integer' },
+          refutado: { type: 'boolean' },
+          motivo: { type: 'string' },
+          evidencia: { type: 'string' },
+        },
+        required: ['indice', 'refutado', 'motivo', 'evidencia'],
+      },
+    },
   },
-  required: ['refutado', 'motivo', 'evidencia'],
+  required: ['vereditos'],
 }
 
 const LACUNAS_SCHEMA = {
@@ -62,8 +73,8 @@ function lerEntrada(entrada) {
   return { pergunta, frentes }
 }
 
-function descreverAchado(achado) {
-  return [`- o que: ${achado.o_que}`, `- onde: ${achado.onde}`, `- detalhe: ${achado.detalhe ?? '(sem detalhe)'}`].join('\n')
+function descreverAchado(achado, numero) {
+  return [`Achado ${numero}`, `- o que: ${achado.o_que}`, `- onde: ${achado.onde}`, `- detalhe: ${achado.detalhe}`].join('\n')
 }
 
 function montarPromptVarredura(frente) {
@@ -71,6 +82,7 @@ function montarPromptVarredura(frente) {
     `Pergunta da investigação: ${pergunta}`,
     `Frente: ${frente.titulo}\nEscopo: ${frente.escopo}`,
     'Investigue só este escopo. Cada achado precisa de um `onde` verificável (caminho:linha ou URL): outro agente vai abrir esse lugar para tentar refutá-lo.',
+    'Cada achado tem exatamente as chaves `o_que`, `onde` e `detalhe`, nenhuma outra.',
     'Não invente caminho nem conteúdo. O que não achar vai em `nao_encontrado`.',
   ].join('\n\n')
 }
@@ -86,35 +98,61 @@ async function varrerFrente(frente) {
   return varredura
 }
 
-function montarPromptRefutacao(achado, frente) {
+// Incompletude não é refutação: um fato correto em achados_refutados engana a raiz.
+function montarPromptVerificacao(achados, frente) {
   return [
-    'Você é um verificador cético. Seu papel é REFUTAR o achado abaixo, não confirmá-lo.',
+    'Você é um verificador cético. Para cada achado abaixo, abra o lugar citado em `onde` e confira se ele sustenta a afirmação.',
     `Pergunta da investigação: ${pergunta}\nFrente: ${frente.titulo}`,
-    `Achado:\n${descreverAchado(achado)}`,
-    'Abra e leia o lugar citado em `onde`. Marque `refutado: true` se o lugar não existe, se não diz o que o achado afirma ou se o achado não responde à pergunta. Marque `refutado: false` só se o que você leu sustenta o achado.',
-    'Em `evidencia`, cite o trecho lido (curto) ou diga por que não o encontrou.',
+    `Achados (${achados.length}):\n\n${achados.map((achado, posicao) => descreverAchado(achado, posicao + 1)).join('\n\n')}`,
+    'Marque `refutado: true` SÓ quando a afirmação é falsa ou o lugar citado não a sustenta: o arquivo ou a linha não existe, ou o código diz outra coisa. Caso contrário, `refutado: false`.',
+    'Achado verdadeiro mas incompleto, ou que não responde à pergunta inteira, NÃO é refutado. Lacuna de cobertura é assunto da fase de completude, não desta.',
+    `Devolva um veredito por achado, com \`indice\` igual ao número do achado (1 a ${achados.length}). Leia cada arquivo uma vez só, mesmo que vários achados apontem para ele.`,
+    '`evidencia` é obrigatória e pode ser curta: o trecho lido ou "linha X diz Y"; se não encontrou o lugar, diga isso.',
   ].join('\n\n')
 }
 
-async function refutarAchado(achado, frente, indice) {
-  const veredito = await agent(montarPromptRefutacao(achado, frente), {
-    label: `refutar · ${frente.titulo} #${indice + 1}`,
-    phase: FASE_VERIFICACAO,
-    agentType: 'forge:scout',
-    schema: REFUTACAO_SCHEMA,
-  })
-  const desfecho = veredito ? (veredito.refutado ? 'refutado' : 'confirmado') : 'não verificado (null)'
-  log(`${frente.titulo}: achado #${indice + 1} (${achado.onde}) → ${desfecho}`)
-  return veredito
+function indexarVereditos(vereditos, quantidade, frente) {
+  const porPosicao = Array.from({ length: quantidade }, () => null)
+  for (const veredito of vereditos) {
+    const posicao = veredito.indice - 1
+    if (!Number.isInteger(veredito.indice) || posicao < 0 || posicao >= quantidade) {
+      log(`${frente.titulo}: veredito com índice ${veredito.indice} fora da lista (1 a ${quantidade}), ignorado`)
+    } else if (porPosicao[posicao]) {
+      log(`${frente.titulo}: veredito repetido para o achado #${veredito.indice}, vale o primeiro`)
+    } else {
+      porPosicao[posicao] = veredito
+    }
+  }
+  return porPosicao
 }
 
-function classificarAchados(achados, vereditos) {
+async function verificarEmLote(achados, frente) {
+  if (achados.length === 0) return []
+  const retorno = await agent(montarPromptVerificacao(achados, frente), {
+    label: `verificar · ${frente.titulo}`,
+    phase: FASE_VERIFICACAO,
+    agentType: 'forge:scout',
+    schema: VEREDITOS_SCHEMA,
+  })
+  if (!retorno) {
+    log(`${frente.titulo}: verificação sem retorno (null), ${achados.length} achado(s) ficam não verificados`)
+    return []
+  }
+  return indexarVereditos(retorno.vereditos, achados.length, frente)
+}
+
+function classificarAchados(achados, vereditos, frente) {
   const classificados = { confirmados: [], refutados: [], naoVerificados: [] }
   achados.forEach((achado, indice) => {
     const veredito = vereditos[indice]
-    if (!veredito) classificados.naoVerificados.push(achado)
-    else if (veredito.refutado) classificados.refutados.push({ ...achado, motivo_refutacao: veredito.motivo })
-    else classificados.confirmados.push(achado)
+    if (!veredito) {
+      log(`${frente.titulo}: achado #${indice + 1} (${achado.onde}) sem veredito, fica não verificado`)
+      classificados.naoVerificados.push(achado)
+    } else if (veredito.refutado) {
+      classificados.refutados.push({ ...achado, motivo_refutacao: veredito.motivo })
+    } else {
+      classificados.confirmados.push(achado)
+    }
   })
   return classificados
 }
@@ -131,8 +169,9 @@ async function verificarFrente(varredura, frente) {
   if (foraDoTeto.length > 0) {
     log(`${frente.titulo}: ${foraDoTeto.length} achado(s) além do teto de ${LIMITE_ACHADOS_POR_FRENTE} ficaram sem verificação: ${foraDoTeto.map((achado) => achado.onde).join(', ')}`)
   }
-  const vereditos = await parallel(aVerificar.map((achado, indice) => () => refutarAchado(achado, frente, indice)))
-  const { confirmados, refutados, naoVerificados } = classificarAchados(aVerificar, vereditos)
+  const vereditos = await verificarEmLote(aVerificar, frente)
+  const { confirmados, refutados, naoVerificados } = classificarAchados(aVerificar, vereditos, frente)
+  log(`${frente.titulo}: verificação → ${confirmados.length} confirmado(s), ${refutados.length} refutado(s), ${naoVerificados.length} não verificado(s)`)
   return {
     titulo: frente.titulo,
     resposta: varredura.resposta,

@@ -234,34 +234,106 @@ function achado(onde) {
   return { o_que: `trecho em ${onde}`, onde, detalhe: 'linha relevante' }
 }
 
-const ACHADOS_DA_FRENTE_GRANDE = Array.from({ length: 10 }, (_, indice) => achado(`b.ts:${indice + 1}`))
-
-function responderInvestigacao(prompt, { label }) {
-  if (label === 'varredura · Rotas') return { status: 'OK', resposta: 'rotas em a.ts', achados: [achado('a.ts:1'), achado('a.ts:9')] }
-  if (label === 'varredura · Banco') return { status: 'OK', resposta: 'banco em b.ts', achados: ACHADOS_DA_FRENTE_GRANDE }
-  if (label === 'completude') return { lacunas: ['falta o fluxo de logout'] }
-  if (label.startsWith('refutar')) {
-    const isRefutado = prompt.includes('a.ts:9')
-    return { refutado: isRefutado, motivo: isRefutado ? 'a linha 9 é um comentário' : 'confere', evidencia: 'trecho lido' }
-  }
-  throw new Error(`chamada inesperada: ${label}`)
+function veredito(indice, refutado = false, motivo = 'confere') {
+  return { indice, refutado, motivo, evidencia: 'trecho lido' }
 }
 
+function confirmarTodos(quantidade) {
+  return { vereditos: Array.from({ length: quantidade }, (_, posicao) => veredito(posicao + 1)) }
+}
+
+function frentesDe(...titulos) {
+  return titulos.map((titulo) => ({ titulo, escopo: `src/${titulo.toLowerCase()}` }))
+}
+
+// Stub por frente: a varredura devolve achados[titulo] e o verificador em lote devolve vereditos[titulo].
+function responderInvestigacao({ achados, vereditos, lacunas = [] }) {
+  return (_prompt, { label }) => {
+    const [etapa, titulo] = label.split(' · ')
+    if (etapa === 'varredura') return { status: 'OK', resposta: `resposta de ${titulo}`, achados: achados[titulo] }
+    if (etapa === 'verificar') return vereditos[titulo]
+    if (label === 'completude') return { lacunas }
+    throw new Error(`chamada inesperada: ${label}`)
+  }
+}
+
+const ACHADOS_DA_FRENTE_GRANDE = Array.from({ length: 10 }, (_, indice) => achado(`b.ts:${indice + 1}`))
+const ACHADOS_DE_ROTAS = [achado('a.ts:1'), achado('a.ts:9')]
+
 async function cenarioInvestigarComRefutacao() {
-  const args = { pergunta: 'onde a sessão é validada?', frentes: [{ titulo: 'Rotas', escopo: 'src/routes' }, { titulo: 'Banco', escopo: 'src/db' }] }
-  const { retorno, chamadas, logs } = await rodarWorkflow('investigar', args, responderInvestigacao)
+  const args = { pergunta: 'onde a sessão é validada?', frentes: frentesDe('Rotas', 'Banco') }
+  const { retorno, chamadas, logs } = await rodarWorkflow('investigar', args, responderInvestigacao({
+    achados: { Rotas: ACHADOS_DE_ROTAS, Banco: ACHADOS_DA_FRENTE_GRANDE },
+    vereditos: { Rotas: { vereditos: [veredito(1), veredito(2, true, 'a linha 9 é um comentário')] }, Banco: confirmarTodos(8) },
+    lacunas: ['falta o fluxo de logout'],
+  }))
   const [rotas, banco] = retorno.frentes
   assert.deepEqual(rotas.achados_confirmados.map((item) => item.onde), ['a.ts:1'])
   assert.deepEqual(rotas.achados_refutados.map((item) => [item.onde, item.motivo_refutacao]), [['a.ts:9', 'a linha 9 é um comentário']])
   assert.equal(banco.achados_confirmados.length, 8)
   assert.deepEqual(banco.achados_nao_verificados.map((item) => item.onde), ['b.ts:9', 'b.ts:10'])
-  assert.equal(chamadas.filter((chamada) => chamada.label.startsWith('refutar · Banco')).length, 8)
+  const verificacoesDoBanco = chamadas.filter((chamada) => chamada.label === 'verificar · Banco')
+  assert.equal(verificacoesDoBanco.length, 1, 'um cético por frente, não um por achado')
+  assert.ok(verificacoesDoBanco[0].prompt.includes('b.ts:8') && !verificacoesDoBanco[0].prompt.includes('b.ts:9'), 'cético só recebe os achados dentro do teto')
+  assert.ok(verificacoesDoBanco[0].prompt.includes('NÃO é refutado'), 'prompt do cético precisa dizer que incompletude não é refutação')
   assert.ok(logs.some((mensagem) => mensagem.includes('b.ts:9, b.ts:10')), 'log deve citar os achados fora do teto')
   assert.ok(chamadas.every((chamada) => chamada.agentType === 'forge:scout'))
   const completude = chamadas.find((chamada) => chamada.label === 'completude')
   assert.ok(completude.prompt.includes('a.ts:1') && !completude.prompt.includes('a.ts:9'), 'completude só recebe achados sobreviventes')
   assert.deepEqual(retorno.lacunas, ['falta o fluxo de logout'])
   assert.equal(retorno.pergunta, args.pergunta)
+}
+
+async function cenarioInvestigarVereditoFaltando() {
+  const achados = { Rotas: [achado('a.ts:1'), achado('a.ts:5'), achado('a.ts:9')] }
+  const { retorno, logs } = await rodarWorkflow('investigar', { pergunta: 'p?', frentes: frentesDe('Rotas') }, responderInvestigacao({
+    achados,
+    vereditos: { Rotas: { vereditos: [veredito(1), veredito(3)] } },
+  }))
+  const [rotas] = retorno.frentes
+  assert.deepEqual(rotas.achados_confirmados.map((item) => item.onde), ['a.ts:1', 'a.ts:9'])
+  assert.deepEqual(rotas.achados_nao_verificados.map((item) => item.onde), ['a.ts:5'])
+  assert.ok(logs.some((mensagem) => mensagem.includes('a.ts:5') && mensagem.includes('sem veredito')), 'log deve citar o achado sem veredito')
+}
+
+async function cenarioInvestigarIndiceInvalidoIgnorado() {
+  const { retorno, logs } = await rodarWorkflow('investigar', { pergunta: 'p?', frentes: frentesDe('Rotas') }, responderInvestigacao({
+    achados: { Rotas: ACHADOS_DE_ROTAS },
+    vereditos: { Rotas: { vereditos: [veredito(0, true, 'fora'), veredito(1), veredito(3, true, 'fora'), veredito(1, true, 'repetido')] } },
+  }))
+  const [rotas] = retorno.frentes
+  assert.deepEqual(rotas.achados_confirmados.map((item) => item.onde), ['a.ts:1'])
+  assert.deepEqual(rotas.achados_refutados, [], 'veredito fora da lista ou repetido não refuta nada')
+  assert.deepEqual(rotas.achados_nao_verificados.map((item) => item.onde), ['a.ts:9'])
+  assert.equal(logs.filter((mensagem) => mensagem.includes('fora da lista')).length, 2)
+}
+
+async function cenarioInvestigarVerificadorNuloEFrenteVazia() {
+  const { retorno, chamadas } = await rodarWorkflow('investigar', { pergunta: 'p?', frentes: frentesDe('Rotas', 'Vazia') }, responderInvestigacao({
+    achados: { Rotas: ACHADOS_DE_ROTAS, Vazia: [] },
+    vereditos: { Rotas: null },
+  }))
+  const [rotas, vazia] = retorno.frentes
+  assert.deepEqual(rotas.achados_nao_verificados.map((item) => item.onde), ['a.ts:1', 'a.ts:9'])
+  assert.deepEqual(rotas.achados_confirmados, [])
+  assert.deepEqual(vazia.achados_nao_verificados, [])
+  assert.ok(!chamadas.some((chamada) => chamada.label === 'verificar · Vazia'), 'frente sem achados não chama o cético')
+}
+
+async function cenarioInvestigarContagemDeAgentes() {
+  const cincoAchados = (prefixo) => Array.from({ length: 5 }, (_, indice) => achado(`${prefixo}.ts:${indice + 1}`))
+  const { chamadas } = await rodarWorkflow('investigar', { pergunta: 'p?', frentes: frentesDe('Rotas', 'Banco') }, responderInvestigacao({
+    achados: { Rotas: cincoAchados('a'), Banco: cincoAchados('b') },
+    vereditos: { Rotas: confirmarTodos(5), Banco: confirmarTodos(5) },
+  }))
+  const rotulos = chamadas.map((chamada) => chamada.label).sort()
+  assert.deepEqual(rotulos, ['completude', 'varredura · Banco', 'varredura · Rotas', 'verificar · Banco', 'verificar · Rotas'])
+  const itemDoAchado = chamadas.find((chamada) => chamada.label.startsWith('varredura')).schema.properties.achados.items
+  assert.equal(itemDoAchado.additionalProperties, false, 'achado do scout não aceita chave extra')
+  assert.deepEqual(itemDoAchado.required, ['o_que', 'onde', 'detalhe'])
+  const itemDoVeredito = chamadas.find((chamada) => chamada.label.startsWith('verificar')).schema.properties.vereditos.items
+  assert.ok(itemDoVeredito.required.includes('evidencia'))
+  assert.equal(itemDoVeredito.properties.evidencia.minLength, undefined, 'evidencia curta precisa passar no schema')
 }
 
 async function cenarioRegrasDoRuntime() {
@@ -289,6 +361,10 @@ const CENARIOS = [
   ['executar-lote: FALHOU após o máximo de tentativas', cenarioFalhaAposMaxTentativas],
   ['executar-lote: testers browser em fila, contrato em paralelo', cenarioTestersBrowserEmFila],
   ['investigar: achado refutado, teto de 8 e lacunas', cenarioInvestigarComRefutacao],
+  ['investigar: achado sem veredito fica não verificado', cenarioInvestigarVereditoFaltando],
+  ['investigar: veredito com índice inválido ou repetido é ignorado', cenarioInvestigarIndiceInvalidoIgnorado],
+  ['investigar: verificador null e frente sem achados', cenarioInvestigarVerificadorNuloEFrenteVazia],
+  ['investigar: 2 frentes com 5 achados = 5 agentes e schemas estritos', cenarioInvestigarContagemDeAgentes],
 ]
 
 let quantidadeDeFalhas = 0

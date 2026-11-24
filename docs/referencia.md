@@ -211,8 +211,10 @@ Roda um lote de tarefas no ciclo `forge:dev` → `forge:tester` → correção.
 Investigação somente leitura com `forge:scout`.
 
 - **`args`:** `{ "pergunta": "...", "frentes": [{ "titulo": "...", "escopo": "..." }] }`.
-- **Como roda:** um `scout` por frente; depois, um `scout` cético por achado (até 8 por frente)
-  tenta refutá-lo lendo o lugar citado; por fim, um `scout` aponta as lacunas.
+- **Como roda:** um `scout` por frente; depois, um `scout` cético por frente confere em lote até
+  8 achados lendo os lugares citados e refuta só o que for falso (achado verdadeiro mas
+  incompleto não é refutado: lacuna é assunto da completude); por fim, um `scout` aponta as
+  lacunas.
 - **Retorno:** `{ pergunta, frentes, lacunas }`; cada frente traz `resposta`,
   `achados_confirmados`, `achados_refutados` e `achados_nao_verificados`.
 
