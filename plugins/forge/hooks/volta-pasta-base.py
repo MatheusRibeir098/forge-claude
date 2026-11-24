@@ -65,8 +65,9 @@ def main() -> int:
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict) or payload.get("tool_name") != "Bash":
             return 0
-        # Mesmo critério dos outros hooks: agent_id/agent_type => subagente, fora do escopo.
-        if payload.get("agent_id") or payload.get("agent_type"):
+        # Mesmo critério dos outros hooks: a raiz é quem não tem agent_id. Com `claude --agent X`
+        # a raiz traz agent_type sem agent_id, e por isso agent_type não conta como subagente.
+        if payload.get("agent_id"):
             return 0
 
         raiz = os.environ.get("CLAUDE_PROJECT_DIR")

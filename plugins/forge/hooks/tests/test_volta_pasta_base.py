@@ -118,10 +118,17 @@ def _(tmp):
     ok(rc == 0 and out == "", f"rc={rc} out={out!r}")
 
 
-@caso("em subagente (agent_type): sem saída")
+@caso("em subagente (agent_id com agent_type): sem saída")
+def _(tmp):
+    rc, out = roda(HOOK, payload(agent_id="abc", agent_type="dev"))
+    ok(rc == 0 and out == "", f"rc={rc} out={out!r}")
+
+
+@caso("raiz com `claude --agent X` (agent_type sem agent_id): tratada como raiz, recebe o cd")
 def _(tmp):
     rc, out = roda(HOOK, payload(agent_type="dev"))
-    ok(rc == 0 and out == "", f"rc={rc} out={out!r}")
+    ok(rc == 0, f"rc={rc}")
+    ok(saida_json(out)["updatedInput"]["command"] == f'cd "{RAIZ}" && ls -la', out)
 
 
 @caso("tool diferente de Bash: sem saída")
