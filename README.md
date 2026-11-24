@@ -94,6 +94,12 @@ Nada vai para o GitHub ou para a nuvem sem você pedir.
 
 </details>
 
+Por baixo, o `/forge` entrega o lote ao Workflow `forge:executar-lote` (implementa, valida e
+corrige por tarefa) e a investigação ao `forge:investigar` (um `scout` por frente, com um
+segundo `scout` tentando refutar cada achado). Na primeira vez, o Claude Code pede
+aprovação; sem Workflow, o Forge faz o mesmo à mão. Detalhes na
+[referência técnica](docs/referencia.md#workflows).
+
 ## Feito para economizar token
 
 Num loop de agentes, o maior custo é o **contexto reenviado**: a cada turno, a conversa inteira
@@ -225,6 +231,33 @@ claude plugin install forge-frontend@forge-claude   # opcional
 > [!TIP]
 > Se o `/forge` não aparecer na lista de comandos, reinicie a sessão do Claude Code.
 
+### Atualização automática
+
+**Para quem instala.** Marketplace de terceiros vem com o auto-update desligado. Para ligar,
+abra `/plugin`, entre em **Marketplaces**, escolha `forge-claude` e ative o auto-update. As
+versões novas passam a chegar sozinhas, e `/reload-plugins` aplica a atualização na sessão
+aberta, sem reiniciar.
+
+**Para a equipe.** Coloque isto no `.claude/settings.json` do repositório, para o marketplace
+e o plugin já virem declarados com o auto-update ligado:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "forge-claude": {
+      "source": { "source": "github", "repo": "MatheusRibeir098/forge-claude" },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": {
+    "forge@forge-claude": true
+  }
+}
+```
+
+Cada pessoa ainda aceita a confiança na pasta e roda uma vez
+`claude plugin install forge@forge-claude --scope project`.
+
 ### 3. Prepare o repositório (uma vez por repositório)
 
 Abra o Claude Code **na raiz** do repositório onde você vai trabalhar e rode:
@@ -250,7 +283,7 @@ Abra o Claude Code **na raiz** do repositório onde você vai trabalhar e rode:
 
 ```bash
 claude plugin marketplace update forge-claude   # busca a versão nova do catálogo
-claude plugin update forge@forge-claude         # atualiza o plugin; depois reinicie a sessão
+claude plugin update forge@forge-claude         # atualiza o plugin; depois /reload-plugins (ou reinicie a sessão)
 claude plugin uninstall forge@forge-claude      # remove
 ```
 

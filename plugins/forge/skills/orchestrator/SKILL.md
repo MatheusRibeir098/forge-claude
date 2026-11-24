@@ -317,8 +317,11 @@ ser chamado. Duas consequências ruins:
   `SubagentStop` e, havendo entrega do `dev` sem `tester`, **bloqueia uma vez o fim do turno**
   da raiz. Ele lê o **retorno** do `dev` (`arquivos_alterados` e `comandos_para_subir`, não o
   briefing) e indica o modo do `tester` (`browser`, `contrato` ou nenhum) com esses dados
-  prontos. No Workflow `forge:executar-lote` o `tester` já está no script e a guarda nem
-  precisa agir.
+  prontos. Vale em qualquer profundidade (agentes aninhados e de workflow). Não bloqueia
+  enquanto houver `dev`/`tester` do Forge rodando; cada entrega é cobrada uma vez; um
+  `FALHOU` ou `BLOQUEADO` do `tester` reabre a cobrança; um `PASSOU` limpa só as entregas
+  citadas no briefing do `tester` (ou a mais antiga, se nenhuma for citada). No Workflow
+  `forge:executar-lote` o `tester` já está no script e a guarda nem precisa agir.
 
 Logo: **toda tarefa com UI, rota ou endpoint precisa de uma invocação de `tester`.** Se você
 (ou o workflow) não invocar, ninguém validou. Use os `comandos_para_subir` que o `dev` devolveu.

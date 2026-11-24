@@ -103,6 +103,12 @@ banco.
   subagente.
 - **Ele paraleliza sozinho.** Tarefas independentes vão na mesma mensagem. Se você precisou
   pedir "adianta outra coisa junto", ele falhou nisso.
+- **O loop roda por um Workflow.** O Forge entrega o lote de tarefas ao `forge:executar-lote`
+  (e a investigação ao `forge:investigar`), que implementa, valida e corrige por código. Na
+  primeira vez o Claude Code **pede aprovação**; escolha "Yes, and don't ask again" para não
+  ser perguntado de novo. Você acompanha em `/workflows`. Se o Workflow estiver desligado ou
+  a sua CLI for antiga, o Forge faz o mesmo à mão com `dev` → `tester`, e o resultado de cada
+  agente chega depois, como notificação: ele não encerra o turno com entrega sem validação.
 - **Ele decide validar e avisa** — não pergunta. Você recebe uma linha dizendo o que vai ser
   validado e por quê.
 - **`PARCIAL` não é erro.** Quando um `dev` bate no teto de turnos, ele devolve o que fez e o

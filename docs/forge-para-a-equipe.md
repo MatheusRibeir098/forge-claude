@@ -54,14 +54,14 @@ O mesmo mecanismo atende investigação de incidente, leitura de banco, automaç
 
 Subagente sem modelo explícito herda o modelo do orquestrador, e um modelo maior encarece a invocação — por isso `dev` e `tester` ficam fixos em sonnet. O `dev` concentra o trabalho e, em geral, o custo; `tester` e `scout` custam menos por invocação. Quanto ao teto de turnos, as invocações que passam do teto do próprio papel são exatamente as que o hook passa a cortar; quantas são, e quanto isso economiza, depende do seu uso: meça com [`docs/linha-de-base.md`](linha-de-base.md).
 
-Há um teto por papel: `dev` avisa em 25 e corta em 35, `tester` avisa em 45 e corta em 65 (precisa de mais fôlego porque sobe servidor e valida), `scout` avisa em 28 e corta em 40; agentes genéricos (`general-purpose`, `Explore`, agentes de outros plugins) avisam em 30 e cortam em 40, e no teto devolvem `status: "PARCIAL"`. Cada um é ajustável por variável de ambiente (`FORGE_TURN_CAP`, `FORGE_TESTER_CAP`, `FORGE_SCOUT_CAP`, `FORGE_OUTRO_CAP`) — quem achar o teto apertado para o próprio trabalho muda sem tocar no plugin.
+Há um teto por papel: `dev` avisa em 25 e corta em 35, `tester` avisa em 180 e corta em 250 (precisa de muito mais fôlego porque sobe servidor, valida e conta as chamadas do navegador), `scout` avisa em 28 e corta em 40; agentes genéricos (`general-purpose`, `Explore`, agentes de outros plugins) avisam em 30 e cortam em 40, e no teto devolvem `status: "PARCIAL"`. Cada um é ajustável por variável de ambiente (`FORGE_TURN_CAP`, `FORGE_TESTER_CAP`, `FORGE_SCOUT_CAP`, `FORGE_OUTRO_CAP`) — quem achar o teto apertado para o próprio trabalho muda sem tocar no plugin.
 
 ## O que ainda não está provado
 
 - Não há medição própria neste repositório. O ganho do teto de turnos e dos demais hooks só está provado na sua máquina depois que você medir antes e depois (veja [`docs/linha-de-base.md`](linha-de-base.md)).
 - A economia do teto depende de premissa: que a tarefa re-loteada no teto cabe em poucos lotes. Se cada tarefa longa virar muitos lotes, o ganho cai. O princípio é cortar as invocações que fogem de controle, não espremer as normais.
 - O `tester` em modo `browser` depende de ferramentas que vêm de um servidor MCP. O plugin usa o único caminho que a documentação oficial garante — o agente não declara `tools`, e assim herda as ferramentas MCP da sessão. Falta confirmar em uso real que isso entrega o navegador a ele; o comando `/forge:doctor` faz essa verificação e diz o que fazer em cada desfecho. Enquanto não for confirmado, o modo `contrato` (sem navegador) funciona normalmente.
-- A suíte de avaliação automatizada do plugin ainda é mínima: `plugins/forge/evals/` tem 1 caso (`investigacao-nao-vira-codigo`, com `prompt.md` e 3 graders). Os hooks têm 7 scripts de teste unitário (`test_delega_varredura.py`, `test_deny_bash_writes.py`, `test_deny_orchestrator.py`, `test_identidade_local.py`, `test_require_tester.py`, `test_subagent_turn_budget.py` e `test_volta_pasta_base.py`), com 92 casos no total.
+- A suíte de avaliação automatizada do plugin ainda é mínima: `plugins/forge/evals/` tem 1 caso (`investigacao-nao-vira-codigo`, com `prompt.md` e 3 graders). Os hooks têm 7 scripts de teste unitário (`test_delega_varredura.py`, `test_deny_bash_writes.py`, `test_deny_orchestrator.py`, `test_identidade_local.py`, `test_require_tester.py`, `test_subagent_turn_budget.py` e `test_volta_pasta_base.py`), com 121 casos no total, e os dois workflows têm 7 cenários rodados no `node`.
 
 ## Como adotar
 
@@ -70,6 +70,8 @@ Há um teto por papel: `dev` avisa em 25 e corta em 35, `tester` avisa em 45 e c
 3. Opcional, para quem trabalha com interface: `/plugin install forge-frontend@forge-claude`
 4. No repositório de trabalho, rodar `/forge:setup` — grava as permissões (`git push` pede confirmação, push forçado é negado) e os invariantes do `CLAUDE.md` — incluindo a regra de nunca fazer deploy nem push sem ordem explícita —, que não viajam dentro de um plugin. O comando mostra o que vai gravar, pede confirmação, e pergunta se você quer o mapa local de credenciais.
 5. A partir daí: `/forge` (cria projeto ou entra em modo de conserto), ou os atalhos `/forge:new` e `/forge:fix`.
+
+Para a equipe inteira receber o plugin e as atualizações sem passo manual, declare o marketplace e o plugin no `.claude/settings.json` do repositório, com o snippet da seção [Atualização automática do README](../README.md#atualização-automática). Cada pessoa ainda aceita a confiança na pasta e roda `claude plugin install forge@forge-claude --scope project` uma vez.
 
 ## Glossário
 

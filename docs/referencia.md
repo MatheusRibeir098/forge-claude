@@ -1,8 +1,8 @@
 # Referência técnica
 
 O [`README`](../README.md) explica o Forge em linguagem simples. Aqui ficam os detalhes:
-papéis e modelos, modos do `tester`, comandos, hooks, invariantes, tetos de turnos, estrutura
-do repositório e testes.
+papéis e modelos, modos do `tester`, comandos, skills, hooks, invariantes, tetos de turnos,
+variáveis de ambiente, workflows, estrutura do repositório e testes.
 
 ## Como funciona
 
@@ -24,9 +24,22 @@ O `tester` trabalha em dois modos:
   resultado com o critério de aceite.
 
 O hook `require-tester.py` lê o retorno estruturado do `dev` (arquivos alterados e comandos
-para subir) e recomenda o modo. O orquestrador decide e avisa em uma linha; não pergunta. O mesmo hook guarda
-a pendência de validação da sessão e trata o veredito do `tester`: `PASSOU` a limpa, `FALHOU` e
-`BLOQUEADO` a mantêm.
+para subir) e recomenda o modo. O orquestrador decide e avisa em uma linha; não pergunta.
+
+Como o `Agent` é assíncrono (o retorno chega depois, como notificação), a decisão vem do evento
+`SubagentStop`, que dispara em qualquer profundidade: ele anota a entrega do `dev` e aplica o
+veredito do `tester`. Quando o orquestrador tenta encerrar o turno (`Stop`) com entrega sem
+`tester`, o hook **bloqueia uma vez** o fim do turno. Não bloqueia enquanto houver `dev` ou
+`tester` do Forge ainda rodando. Cada entrega é cobrada uma só vez, e `stop_hook_active` libera
+sempre, para nunca entrar em laço. Os vereditos:
+
+- `PASSOU` limpa só as entregas cujos arquivos o briefing do `tester` cita; se nenhuma for
+  citada, limpa a mais antiga;
+- `FALHOU` e `BLOQUEADO` mantêm a pendência e reabrem a cobrança (`BLOQUEADO` não é aprovação).
+
+**A raiz é quem não tem `agent_id`.** O payload de subagente traz `agent_id`; o da sessão
+principal não. Os hooks usam essa ausência para reconhecer a raiz (contenção de escrita,
+`volta-pasta-base`, `rtk-root`, `Stop` e o contador de turnos, que ignora a raiz).
 
 ### Comandos
 
@@ -43,6 +56,28 @@ a pendência de validação da sessão e trata o veredito do `tester`: `PASSOU` 
   ponteiros, nunca o segredo). Nunca sobrescreve nada em silêncio.
 - `/forge:doctor`: diagnostica contexto, permissions, invariantes, hooks, `rtk` e se o
   `tester` enxerga o navegador. Só lê.
+
+### Skills
+
+O plugin traz 15 skills. Cada briefing nomeia só 1 ou 2 delas, para não encher o contexto.
+
+| Skill | Para que serve |
+|---|---|
+| `banco-de-dados-leitura-segura` | Consultar banco ou data lake com perfil somente leitura, `LIMIT` na exploração e cuidado com PII em log ou relatório |
+| `clean-code` | Princípios de código limpo ao escrever ou revisar: nomes, funções, DRY, KISS, erros e organização |
+| `e2e-chrome` | Validar a UI de ponta a ponta no Chrome real, via `claude-in-chrome`, no modo `browser` do `tester` |
+| `git-profiles` | Descobrir as contas git/GitHub da máquina, escolher a correta com o usuário e aplicá-la |
+| `lessons-learned` | Erros e armadilhas recorrentes em projetos web (async, SQLite, upload, renderização, UX, processo) |
+| `meta-prompt` | Conduzir a conversa que extrai requisitos e gerar um `prompt.md` auto-contido (fluxo "criar do zero") |
+| `no-deploy-no-push` | O que exige autorização explícita antes de deploy, `git push` ou criar repositório; commits em português |
+| `orchestrator` | Decompor em tarefas, montar briefings, invocar `dev`, `tester` e `scout`, avaliar retornos e persistir progresso |
+| `safe-operations` | Conferir processos ativos antes de derrubar algo, atualizar a branch antes de analisá-la e filtrar saída grande |
+| `scaffolding` | Estrutura inicial de projeto novo: pastas, `package.json`, TypeScript estrito, Vite + Tailwind, proxy, `.gitignore` |
+| `search-before-code` | Pesquisar na web (com o ano) diante de erro de execução ou de tecnologia nova no projeto |
+| `seguranca` | Regras de segurança antes de ação crítica: infraestrutura real, comando destrutivo, escopo e segredos |
+| `setup-blocos` | Blocos canônicos do `/forge:setup`: `permissions`, invariantes, mapa de credenciais, merge e instalação do `rtk` |
+| `spec-driven` | Ler o prompt como especificação: critérios de sucesso, contrato de saída, tarefas auto-contidas e aceite Given/When/Then |
+| `testing-strategy` | Escopo de teste de uma mudança: o que mudou, não o projeto inteiro; ordem de execução e anti-padrões |
 
 ### Os dois jeitos de usar
 
@@ -72,13 +107,13 @@ Definidos em `plugins/forge/hooks/hooks.json`. Os scripts `.sh` são chamados vi
 
 | Hook | Evento | O que faz |
 |---|---|---|
-| `deny-orchestrator-code-edits.sh` | PreToolUse `Write\|Edit` | Bloqueia o orquestrador de escrever código de produto; subagentes escrevem livremente. No modo projeto da fábrica, contém a escrita no projeto (orquestrador e subagentes) |
-| `subagent-turn-budget.sh` | PreToolUse e PostToolUse | Conta as chamadas de ferramenta de cada subagente, avisa e depois nega no teto do papel; nega ao `dev` subir servidor, browser, screenshot ou `curl` local; delega Bash de leitura ao `rtk` quando ele existe |
-| `volta-pasta-base.py` | PreToolUse `Bash` | Na sessão principal, se a cwd do shell divergir de `CLAUDE_PROJECT_DIR`, reescreve o comando com `cd "<raiz>" &&` e avisa |
-| `rtk-root.sh` | PreToolUse `Bash` | Na sessão principal, encadeia o `rtk` (opcional); é o único escritor de `updatedInput` quando a cwd está na raiz |
-| `require-tester.py` | PostToolUse `Agent` | Ao fim de cada `dev`, decide se o `tester` é obrigatório e em qual modo, pelo retorno estruturado dele; também guarda a pendência de validação e trata os vereditos do `tester` |
+| `deny-orchestrator-code-edits.sh` | PreToolUse `Write\|Edit\|NotebookEdit` | Bloqueia o orquestrador de escrever código de produto; subagentes escrevem livremente. No modo projeto da fábrica, contém a escrita no projeto (orquestrador e subagentes) |
+| `subagent-turn-budget.sh` | PreToolUse e PostToolUse em `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, `WebSearch`, `WebFetch` e `mcp__*` | Conta as chamadas de ferramenta de cada subagente (as `mcp__*` contam para `dev`, `tester` e `scout`), avisa e depois nega no teto do papel; nega ao `dev` subir servidor de aplicação (servidores web conhecidos, `pnpm`/`npm dev`, `start`, `preview`, `serve`, e scripts `app`/`server`/`index`/`main` em Python e Node), browser, screenshot ou `curl` local; delega Bash de leitura ao `rtk` quando ele existe. Ignora a raiz |
+| `volta-pasta-base.py` | PreToolUse `Bash` | Na sessão principal (sem `agent_id`), se a cwd do shell divergir de `CLAUDE_PROJECT_DIR`, reescreve o comando com `cd "<raiz>" &&` e avisa |
+| `rtk-root.sh` | PreToolUse `Bash` | Na sessão principal, encadeia o `rtk` (opcional); é o único escritor de `updatedInput` quando a cwd está na raiz. É o único que delega o Bash da raiz ao `rtk`: o `subagent-turn-budget.sh` só delega o dos subagentes |
+| `require-tester.py` | `SubagentStop`, `Stop` e PostToolUse `Agent` | `SubagentStop`: anota a entrega do `dev` (o modo vem do retorno estruturado) e aplica o veredito do `tester`, em qualquer profundidade. `Stop` da raiz: bloqueia uma vez o fim do turno com entrega sem `tester`. `PostToolUse(Agent)`: marca o `tester` lançado (`async_launched`) e cobre CLIs de término síncrono |
 | `delega-varredura.py` | PostToolUse | Conta leituras consecutivas do orquestrador (inclusive chamadas MCP) e, a partir de 8 (`FORGE_LEITURA_LIMIAR`), lembra de delegar ao `scout` |
-| `deny-orchestrator-bash-writes.py` | PreToolUse `Bash` | Barra a escrita de código pela sessão principal via Bash (e, no modo projeto da fábrica, a escrita fora do projeto), com as mesmas regras de caminho do `Write\|Edit` |
+| `deny-orchestrator-bash-writes.py` | PreToolUse `Bash` | Barra a escrita de código pela sessão principal via Bash (e, no modo projeto da fábrica, a escrita fora do projeto), com as mesmas regras de caminho do `Write\|Edit\|NotebookEdit` |
 | `git-identidade-local.py` | PreToolUse `Bash` | Nega `git commit` em repo sem `user.email` local |
 
 ### Invariantes
@@ -118,9 +153,78 @@ não achou nenhum. O orquestrador re-loteia sem perder o que já foi feito; não
 | Papel | Aviso | Teto | Variáveis de ambiente |
 |---|---|---|---|
 | `dev` | 25 | 35 (≈60 turnos) | `FORGE_TURN_WARN` / `FORGE_TURN_CAP` |
-| `tester` | 45 | 65 | `FORGE_TESTER_WARN` / `FORGE_TESTER_CAP` |
+| `tester` | 180 | 250 | `FORGE_TESTER_WARN` / `FORGE_TESTER_CAP` |
 | `scout` | 28 | 40 | `FORGE_SCOUT_WARN` / `FORGE_SCOUT_CAP` |
 | genérico (`general-purpose`, `Explore`, agentes de outros plugins) | 30 | 40 | `FORGE_OUTRO_WARN` / `FORGE_OUTRO_CAP` |
+| agente de construção visual (plugin `forge-visual`, se instalado) | 100 | 130 | `FORGE_VISUAL_WARN` / `FORGE_VISUAL_CAP` |
+| `tester` do `forge-visual` | 50 | 70 | `FORGE_VISUAL_TESTER_WARN` / `FORGE_VISUAL_TESTER_CAP` |
+
+As chamadas `mcp__*` (por exemplo, as do navegador) entram na conta de `dev`, `tester` e
+`scout`; agentes genéricos e visuais as ignoram. O `tester` tem teto alto porque sobe
+servidor, roda E2E e dirige o navegador: o teto serve para pegar fuga de controle, não para
+apertar.
+
+### Variáveis de ambiente
+
+Todas opcionais. Valor inválido cai no padrão.
+
+| Variável | Efeito |
+|---|---|
+| `FORGE_TURN_WARN` / `FORGE_TURN_CAP` | Aviso e teto de chamadas do `dev` (padrão 25 / 35) |
+| `FORGE_TESTER_WARN` / `FORGE_TESTER_CAP` | Aviso e teto do `tester` (padrão 180 / 250) |
+| `FORGE_SCOUT_WARN` / `FORGE_SCOUT_CAP` | Aviso e teto do `scout` (padrão 28 / 40) |
+| `FORGE_OUTRO_WARN` / `FORGE_OUTRO_CAP` | Aviso e teto dos agentes genéricos (padrão 30 / 40) |
+| `FORGE_VISUAL_WARN` / `FORGE_VISUAL_CAP` | Aviso e teto dos agentes `forge-visual:*` que constroem (padrão 100 / 130) |
+| `FORGE_VISUAL_TESTER_WARN` / `FORGE_VISUAL_TESTER_CAP` | Aviso e teto dos `tester` do `forge-visual` (padrão 50 / 70) |
+| `FORGE_LEITURA_LIMIAR` | Quantas leituras consecutivas do orquestrador disparam o lembrete de delegar ao `scout` (padrão 8) |
+| `FORGE_RTK_BIN` | Caminho do binário `rtk`; sem ela, os hooks procuram `rtk` no `PATH` e, não achando, seguem sem delegar |
+| `FORGE_STATE_DIR` | Diretório de estado dos hooks (contadores de turno e de leitura, pendência de validação). Sem ela, cada hook usa `$XDG_RUNTIME_DIR`, `$TMPDIR` ou `/tmp`, sob `forge/<turns, leituras ou validacao>/<session_id>`. Nunca grava dentro do repositório; contadores com mais de um dia são apagados |
+| `FORGE_VOLTA_COMPOSE` | Uso interno: o `volta-pasta-base.py` define `1` ao chamar o `rtk-root.sh`, para obter o comando já reescrito pelo `rtk` e prefixar o `cd`. Não precisa ser definida à mão |
+
+## Workflows
+
+Dois workflows do plugin, declarados em `plugin.json` (campo `workflows`) e chamados pelo
+`/forge` pela ferramenta **Workflow**. Também respondem como `/forge:executar-lote` e
+`/forge:investigar`. Os testes em `workflows/tests/` ficam fora da lista de propósito.
+
+### `forge:executar-lote`
+
+Roda um lote de tarefas no ciclo `forge:dev` → `forge:tester` → correção.
+
+- **`args`:** `{ "tarefas": [{ "id", "briefing_dev", "teste": "browser" | "contrato" | "nenhum",
+  "briefing_tester" }], "max_tentativas": 3 }`. `briefing_tester` é obrigatório quando `teste`
+  não é `nenhum`; `max_tentativas` é opcional (inteiro ≥ 1, padrão 3).
+- **Como roda:** um `dev` por tarefa, em paralelo; `tester` em modo `browser` entram em fila (um
+  Chrome só) e os de `contrato` rodam em paralelo. No `FALHOU`, o `dev` recebe as falhas e a
+  recomendação do `tester` e tenta de novo, até o máximo.
+- **Retorno:** uma lista com, por tarefa, `id`, `status_final` (`PASSOU`, `FALHOU`,
+  `BLOQUEADO`, `PARCIAL` ou `SEM_TESTE`), `tentativas`, `dev`, `tester` e `proximo_briefing`.
+- **Cuidados:** as tarefas de um mesmo lote precisam ter arquivos disjuntos, e o workflow não
+  pergunta nada ao usuário no meio.
+
+### `forge:investigar`
+
+Investigação somente leitura com `forge:scout`.
+
+- **`args`:** `{ "pergunta": "...", "frentes": [{ "titulo": "...", "escopo": "..." }] }`.
+- **Como roda:** um `scout` por frente; depois, um `scout` cético por achado (até 8 por frente)
+  tenta refutá-lo lendo o lugar citado; por fim, um `scout` aponta as lacunas.
+- **Retorno:** `{ pergunta, frentes, lacunas }`; cada frente traz `resposta`,
+  `achados_confirmados`, `achados_refutados` e `achados_nao_verificados`.
+
+### Permissão e aprovação
+
+O `/forge:setup` libera `Workflow(forge:executar-lote)` e `Workflow(forge:investigar)` no
+`allow`. A forma com namespace de plugin ainda não foi testada: se a liberação não casar, o
+Claude Code pede aprovação na primeira chamada, e a opção **"Yes, and don't ask again"** resolve
+dali em diante. O acompanhamento fica em `/workflows`.
+
+### Fallback manual
+
+Com a ferramenta Workflow ausente ou desligada (`disableWorkflows`, CLI antiga), o `/forge`
+faz o mesmo à mão com `Agent`: `dev` → `tester` → avaliação, um `Agent` por tarefa na mesma
+mensagem (e um `scout` por frente na investigação). O retorno chega depois, como notificação,
+e o `require-tester` barra o fim do turno se houver entrega sem `tester`.
 
 O teto do `dev` é conservador de propósito: apertar demais corta tarefas no meio, e o
 retrabalho de uma tarefa partida no meio custa mais que a economia. Também por custo, `dev` e
@@ -147,6 +251,7 @@ plugins/forge/
   skills/                           # 15 skills: orchestrator, setup-blocos, no-deploy-no-push,
                                     #   safe-operations, spec-driven, e2e-chrome, testing-strategy, ...
   hooks/                            # hooks.json, scripts, lib/ e tests/
+  workflows/                        # executar-lote.js, investigar.js e tests/
   evals/                            # avaliação de comportamento (1 caso)
   bin/forge-tokens                  # mede consumo a partir dos transcritos
   templates/                        # prompt.template.md e .npmrc
@@ -156,16 +261,22 @@ docs/                               # tutorial, referência, apresentação para
 
 ## Desenvolvimento
 
-Testes dos hooks (biblioteca padrão, um script por hook, 92 casos no total):
+Testes dos hooks (biblioteca padrão, um script por hook, 121 casos no total):
 
 ```bash
 for t in plugins/forge/hooks/tests/test_*.py; do python3 "$t"; done
 ```
 
-Os scripts são `test_delega_varredura.py` (10 casos), `test_deny_bash_writes.py` (8),
-`test_deny_orchestrator.py` (12), `test_identidade_local.py` (8), `test_require_tester.py` (25,
-construídos a partir de payloads reais de `PostToolUse` capturados na CLI),
-`test_subagent_turn_budget.py` (16) e `test_volta_pasta_base.py` (13).
+Os scripts são `test_delega_varredura.py` (10 casos), `test_deny_bash_writes.py` (15),
+`test_deny_orchestrator.py` (23), `test_identidade_local.py` (8), `test_require_tester.py` (32,
+construídos a partir de payloads reais de `PostToolUse`, `SubagentStop` e `Stop` capturados na
+CLI), `test_subagent_turn_budget.py` (19) e `test_volta_pasta_base.py` (14).
+
+Os workflows têm 7 cenários, que rodam no `node` (sem rede e sem modelo):
+
+```bash
+node plugins/forge/workflows/tests/test_workflows.mjs
+```
 
 Validação estática dos manifestos, sem custo:
 
