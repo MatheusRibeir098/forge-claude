@@ -115,12 +115,14 @@ async function rodarDev(tarefa, briefing, tentativa) {
 }
 
 function montarPromptTester(tarefa, dev) {
-  return [
+  const secoes = [
     tarefa.briefing_tester,
     `## Modo\n${tarefa.teste}`,
     `## Arquivos alterados pelo dev\n${listarEmMarkdown(dev.arquivos_alterados)}`,
     `## Comandos para subir\n${listarEmMarkdown(dev.comandos_para_subir)}`,
-  ].join('\n\n')
+  ]
+  if (dev.falta?.length) secoes.push(`## O dev não verificou\n${listarEmMarkdown(dev.falta)}`)
+  return secoes.join('\n\n')
 }
 
 async function rodarTester(tarefa, dev, tentativa) {
@@ -173,6 +175,7 @@ function montarResultado(tarefa, { statusFinal, tentativas, dev, tester }) {
     tentativas,
     dev,
     tester,
+    falta_do_dev: dev?.falta ?? [],
     proximo_briefing: dev?.proximo_briefing ?? null,
   }
 }
@@ -196,7 +199,7 @@ async function executarTarefa(tarefa) {
 
 function resultadoDeFalhaDoScript(tarefa) {
   log(`${tarefa.id}: o script falhou nesta tarefa; detalhe em /workflows`)
-  return { id: tarefa.id, status_final: 'BLOQUEADO', tentativas: null, dev: null, tester: null, proximo_briefing: null }
+  return { id: tarefa.id, status_final: 'BLOQUEADO', tentativas: null, dev: null, tester: null, falta_do_dev: [], proximo_briefing: null }
 }
 
 const tarefas = lerTarefas(args)

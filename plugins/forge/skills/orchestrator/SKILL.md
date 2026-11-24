@@ -281,9 +281,10 @@ mensagem; o retorno chega por notificação. Ele devolve:
   `proximo_briefing` dele embutido (evita redescobrir o que ele já viu); e
   registre em `progress.md` que a tarefa foi re-loteada — se a **mesma** tarefa voltar
   `PARCIAL` duas vezes, o problema é a sua decomposição, não o teto: quebre bem menor.
-- **PARCIAL sem verificação visual** (`so_falta_validacao: true`): retorno de `dev` sobre algo visual (UI, render, imagem gerada)
+- **Sem verificação visual**: retorno de `dev` sobre algo visual (UI, render, imagem gerada)
   sem verificação visual **é `PARCIAL`**, mesmo com `status: OK` e `build_ok: true` — mande o
-  `tester` (ou abra a imagem) antes de dar por feito.
+  `tester` (ou abra a imagem) antes de dar por feito. O `dev` marca esse PARCIAL com
+  `so_falta_validacao: true` quando o código está pronto e só falta ver.
 - **Teto esgotado**: `SendMessage` para agente que esgotou o teto **não entrega nada** — o hook
   nega a primeira chamada e ele devolve só texto com `status: PARCIAL` e o estado. Despache um
   **agente NOVO** com esse estado no briefing (`proximo_briefing`).

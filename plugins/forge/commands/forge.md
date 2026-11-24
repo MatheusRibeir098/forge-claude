@@ -90,7 +90,8 @@ nome), passando em `args`:
 Ao receber o resultado (`status_final` por tarefa), atualize o `.forge/progress.md` tarefa a
 tarefa e aja conforme o caso:
 
-- **PASSOU** → marque `[x]` no `tasks.md` e faça o commit (PT-BR).
+- **PASSOU** → marque `[x]` no `tasks.md` e faça o commit (PT-BR). Antes, olhe `falta_do_dev`:
+  se trouxer algo além de validação visual ou funcional, não marque como pronto; re-lote o que falta.
 - **PARCIAL** → re-lote com o `proximo_briefing` embutido (skill `orchestrator`, "Revisão do
   retorno do dev").
 - **FALHOU** depois do máximo de tentativas → **Loop Travado**: reformule o briefing por outro
