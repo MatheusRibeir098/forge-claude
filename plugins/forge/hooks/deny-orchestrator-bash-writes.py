@@ -6,8 +6,9 @@ POR QUE EXISTE: o `deny-orchestrator-code-edits.sh` barra Write|Edit do orquestr
 este hook, depois de uma negação, o orquestrador poderia gravar o MESMO conteúdo por
 `cat > x <<EOF`, `tee` ou `sed -i` — furando o Invariante 1 por um caminho que aquele hook não vê.
 
-MESMO CRITÉRIO DE SESSÃO do hook de Write|Edit: payload com `agent_type` => subagente
-(dev/tester), que escreve livremente => este hook fica calado. Sem `agent_type` => orquestrador.
+MESMO CRITÉRIO DE SESSÃO do hook de Write|Edit: payload com `agent_id` => subagente
+(dev/tester), que escreve livremente => este hook fica calado. Sem `agent_id` => orquestrador
+(a raiz de `claude --agent X` traz `agent_type` sem `agent_id`, e continua contida).
 A única exceção é o modo "projeto da fábrica", onde o subagente também é contido (abaixo).
 
 MESMA REGRA DE CAMINHO: a decisão vem de `lib/decisao_escrita.avalia_escrita` (a mesma função
@@ -200,7 +201,7 @@ def main():
             return
         root = raiz_do_payload(payload)
         achado = primeiro_alvo_barrado(comando, root, root,
-                                       subagente=bool(payload.get("agent_type")))
+                                       subagente=bool(payload.get("agent_id")))
     except Exception:
         return  # hook que explode é pior que hook ausente
     if achado is None:

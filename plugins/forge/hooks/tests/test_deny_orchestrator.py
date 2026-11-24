@@ -22,11 +22,17 @@ def caso(nome):
     return deco
 
 
-def roda(cwd, file_path, agent_type=None, tool="Write", env=None):
+def roda(cwd, file_path, agent_type=None, tool="Write", env=None, raiz_agent_type=None,
+         campo_caminho="file_path"):
+    """`agent_type` simula subagente (agent_type + agent_id); `raiz_agent_type` simula a raiz de
+    `claude --agent X` (agent_type SEM agent_id)."""
     payload = {"hook_event_name": "PreToolUse", "tool_name": tool, "cwd": cwd,
-               "tool_input": {"file_path": os.path.join(cwd, file_path)}}
+               "tool_input": {campo_caminho: os.path.join(cwd, file_path)}}
     if agent_type:
         payload["agent_type"] = agent_type
+        payload["agent_id"] = f"agent-{agent_type}"
+    if raiz_agent_type:
+        payload["agent_type"] = raiz_agent_type
     r = subprocess.run(["bash", HOOK], input=json.dumps(payload), capture_output=True,
                        text=True, env={**os.environ, **(env or {})})
     return '"deny"' in r.stdout
@@ -129,6 +135,31 @@ def _f():
             ok(not roda(d, "e2e/spec.ts", agent_type="tester"), "tester pode escrever spec")
         finally:
             shutil.rmtree(d)
+
+
+@caso("(f2) raiz com agent_type e SEM agent_id (claude --agent) continua contida")
+def _f2():
+    for mk in (fabrica, repo):
+        d = mk()
+        try:
+            ok(roda(d, "src/app.py", raiz_agent_type="forge"), "raiz --agent deve ser negada")
+            ok(not roda(d, "README.md", raiz_agent_type="forge"), "raiz --agent: .md liberado")
+            ok(not roda(d, "src/app.py", agent_type="dev"), "subagente com agent_id segue livre")
+        finally:
+            shutil.rmtree(d)
+
+
+@caso("(f3) NotebookEdit lê notebook_path: negado em código, liberado em .md e no subagente")
+def _f3():
+    d = repo()
+    try:
+        nb = dict(tool="NotebookEdit", campo_caminho="notebook_path")
+        ok(roda(d, "analise.ipynb", **nb), "notebook (.ipynb) da raiz deve ser negado")
+        ok(roda(d, "src/app.py", **nb), "mesma decisão do Write")
+        ok(not roda(d, ".forge/notas.md", **nb), "caminho liberado passa")
+        ok(not roda(d, "analise.ipynb", agent_type="dev", **nb), "subagente escreve notebook")
+    finally:
+        shutil.rmtree(d)
 
 
 @caso("(h) fora da raiz é livre (scratchpad, /tmp), nos dois modos")

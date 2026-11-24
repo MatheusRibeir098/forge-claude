@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# PreToolUse (Write|Edit): impõe o invariante "o Forge/orquestrador não escreve
+# PreToolUse (Write|Edit|NotebookEdit): impõe o invariante "o Forge/orquestrador não escreve
 # código de produto". Subagentes (dev/tester) escrevem livremente, exceto no modo "projeto da
 # fábrica" (abaixo), onde só a contenção os alcança.
 #
-# Distinção verificada na CLI 2.1.222 e 2.1.260: o payload
-# do PreToolUse inclui
-# "agent_type"/"agent_id" QUANDO a chamada vem de um subagente; na sessão-raiz esses campos
-# não existem. Logo: sem agent_type => é o orquestrador => aplicar a allowlist de caminhos.
+# Distinção medida na CLI 2.1.331: o payload do PreToolUse traz "agent_id" (e "agent_type")
+# QUANDO a chamada vem de um subagente, em qualquer profundidade; a sessão-raiz não traz nenhum
+# dos dois. Com `claude --agent X` a raiz traz "agent_type" SEM "agent_id" — por isso o critério
+# é "agent_id": sem ele é o orquestrador (raiz) => aplicar a allowlist de caminhos.
 #
 # A decisão de caminho (modos, allowlist, exceção do /forge:setup, contenção) vive em
 # lib/decisao_escrita.py e é COMPARTILHADA com deny-orchestrator-bash-writes.py (escrita via
@@ -49,8 +49,10 @@ except Exception:
     sys.exit(0)  # payload ilegível: não bloqueia
 
 # Subagente (dev/tester): livre, exceto na contenção do modo projeto da fábrica.
-file_path = (d.get("tool_input") or {}).get("file_path") or ""
-decisao = avalia_escrita(file_path, raiz_do_payload(d), subagente=bool(d.get("agent_type")))
+# NotebookEdit traz o alvo em notebook_path; Write/Edit, em file_path.
+tool_input = d.get("tool_input") or {}
+file_path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
+decisao = avalia_escrita(file_path, raiz_do_payload(d), subagente=bool(d.get("agent_id")))
 if decisao.liberado:
     sys.exit(0)
 

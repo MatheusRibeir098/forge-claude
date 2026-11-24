@@ -21,11 +21,16 @@ def caso(nome):
     return deco
 
 
-def roda(cwd, comando, agent_type=None, env=None):
+def roda(cwd, comando, agent_type=None, env=None, raiz_agent_type=None):
+    """`agent_type` simula subagente (agent_type + agent_id); `raiz_agent_type` simula a raiz de
+    `claude --agent X` (agent_type SEM agent_id)."""
     payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": cwd,
                "tool_input": {"command": comando}}
     if agent_type:
         payload["agent_type"] = agent_type
+        payload["agent_id"] = f"agent-{agent_type}"
+    if raiz_agent_type:
+        payload["agent_type"] = raiz_agent_type
     r = subprocess.run([sys.executable, HOOK], input=json.dumps(payload), capture_output=True,
                        text=True, env={**os.environ, **(env or {})})
     ok(r.returncode == 0, f"exit {r.returncode}: {r.stderr}")
@@ -122,6 +127,14 @@ def _subagente():
         for agente in ("dev", "tester"):
             for c in NEGADOS:
                 ok(not roda(d, c, agent_type=agente)[0], f"{agente} pode escrever: {c!r}")
+    com_repo(corpo)
+
+
+@caso("raiz com agent_type e SEM agent_id (claude --agent) continua contida")
+def _raiz_com_agent_type():
+    def corpo(d):
+        for c in NEGADOS:
+            ok(roda(d, c, raiz_agent_type="forge")[0], f"raiz --agent deve ser negada: {c!r}")
     com_repo(corpo)
 
 
