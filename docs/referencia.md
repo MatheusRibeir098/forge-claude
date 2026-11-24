@@ -30,8 +30,12 @@ Como o `Agent` é assíncrono (o retorno chega depois, como notificação), a de
 `SubagentStop`, que dispara em qualquer profundidade: ele anota a entrega do `dev` e aplica o
 veredito do `tester`. Quando o orquestrador tenta encerrar o turno (`Stop`) com entrega sem
 `tester`, o hook **bloqueia uma vez** o fim do turno. Não bloqueia enquanto houver `dev` ou
-`tester` do Forge ainda rodando. Cada entrega é cobrada uma só vez, e `stop_hook_active` libera
-sempre, para nunca entrar em laço. Os vereditos:
+`tester` do Forge ainda rodando (lido de `background_tasks` do payload) nem por 2 h depois que um
+`tester` foi lançado pela raiz (a marca some quando ele termina). Cada entrega é cobrada uma só
+vez, e `stop_hook_active` libera sempre, para nunca entrar em laço. O estado da sessão expira
+depois de 24 h sem escrita. Nos workflows, os agentes devolvem o retorno pela ferramenta
+`StructuredOutput`; o hook lê esse retorno do transcript do subagente quando a última mensagem
+não traz o contrato. Os vereditos:
 
 - `PASSOU` limpa só as entregas cujos arquivos o briefing do `tester` cita; se nenhuma for
   citada, limpa a mais antiga;

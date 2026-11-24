@@ -479,6 +479,14 @@ def entregas():
         return json.load(fh)["entregas"]
 
 
+def _fixture_estado(nome):
+    caminho = os.path.join(ESTADO[0], nome)
+    if not os.path.isfile(caminho):
+        return {}
+    with open(caminho, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
 def bloqueio(out):
     d = json.loads(out) if out.strip() else {}
     return d.get("reason") if d.get("decision") == "block" else None
@@ -579,6 +587,84 @@ def _ad():
     ok(pendente(), "BLOQUEADO aprovou por engano")
     razao = bloqueio(roda(stop())[1])
     ok(razao and "BLOQUEADO" in razao, f"tester terminou e o Stop não voltou a cobrar: {razao!r}")
+
+
+def transcript_estruturado(briefing, retorno):
+    """Transcript de agente de workflow: o retorno vai na ferramenta `StructuredOutput`."""
+    caminho = os.path.join(ESTADO[0], f"transcript-{CONTADOR[0]}.jsonl")
+    CONTADOR[0] += 1
+    with open(os.path.join(AQUI, "fixtures", "subagent-transcript-structured.jsonl"),
+              encoding="utf-8") as fh:
+        linhas = [json.loads(linha) for linha in fh if linha.strip()]
+    linhas[0]["message"]["content"] = briefing
+    linhas[2]["message"]["content"][0]["input"] = retorno
+    with open(caminho, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(json.dumps(linha, ensure_ascii=False) for linha in linhas))
+    return caminho
+
+
+def sub_stop_estruturado(retorno, *, tipo="forge:dev", agent_id="ab38432b42d35d52a",
+                         briefing="implementar a tarefa", mensagem="Pronto."):
+    d = sub_stop(mensagem, tipo=tipo, agent_id=agent_id)
+    d["agent_transcript_path"] = transcript_estruturado(briefing, retorno)
+    return d
+
+
+@caso("(ae) dev de workflow via StructuredOutput com .tsx + comando -> pendência browser")
+def _ae():
+    rc, out, _ = roda(sub_stop_estruturado(ENTREGA_UI))
+    ok(rc == 0 and out.strip() == "", f"SubagentStop não pode imprimir: {out!r}")
+    e = entregas()
+    ok(len(e) == 1 and e[0]["modo"] == "browser", f"esperava 1 entrega browser: {e!r}")
+    ok(e[0]["arquivos"] == ["src/components/Card.tsx"], f"{e!r}")
+    vistos = _fixture_estado("vistos.json")
+    ok(vistos.get("dev:ab38432b42d35d52a") != "sem-contrato", f"registrou sem-contrato: {vistos!r}")
+
+
+@caso("(af) tester de workflow via StructuredOutput PASSOU limpa a pendência e o Stop libera")
+def _af():
+    roda(sub_stop_estruturado(ENTREGA_UI, agent_id="devW"))
+    ok(pendente(), "dev de workflow não deixou pendência")
+    roda(sub_stop_estruturado(VEREDITO | {"veredito": "PASSOU"}, tipo="forge:tester",
+                              agent_id="tW", briefing="valide src/components/Card.tsx"))
+    ok(not pendente(), "PASSOU via StructuredOutput não limpou a pendência")
+    ok(roda(stop())[1].strip() == "", "Stop cobrou tester que já rodou")
+
+
+@caso("(ag) tester de workflow via StructuredOutput FALHOU mantém a pendência")
+def _ag():
+    roda(sub_stop_estruturado(ENTREGA_UI, agent_id="devW"))
+    roda(sub_stop_estruturado(VEREDITO | {"veredito": "FALHOU",
+                                          "recomendacao_para_dev": "conter o botão"},
+                              tipo="forge:tester", agent_id="tW"))
+    razao = bloqueio(roda(stop())[1])
+    ok(razao and "FALHOU" in razao and "conter o botão" in razao, f"{razao!r}")
+
+
+@caso("(ah) transcript sem StructuredOutput ou ilegível: comportamento antigo")
+def _ah():
+    roda(sub_stop("esperando o filho", briefing="mexer em src/pages/Login.tsx"))
+    e = entregas()
+    ok(len(e) == 1 and "Login.tsx" in e[0]["arquivos"][0], f"fallback pelo briefing: {e!r}")
+    d = sub_stop("sem contrato", agent_id="devX")
+    d["agent_transcript_path"] = os.path.join(ESTADO[0], "nao-existe.jsonl")
+    rc, out, _ = roda(d)
+    ok(rc == 0 and out.strip() == "", f"transcript ausente quebrou: {out!r}")
+    ruim = os.path.join(ESTADO[0], "ruim.jsonl")
+    with open(ruim, "w", encoding="utf-8") as fh:
+        fh.write("{nao e json\n\xff\n")
+    d["agent_transcript_path"] = ruim
+    rc, out, _ = roda(d)
+    ok(rc == 0 and out.strip() == "", f"transcript ilegível quebrou: {out!r}")
+
+
+@caso("(ai) o texto do último retorno tem prioridade sobre o StructuredOutput")
+def _ai():
+    roda(sub_stop_estruturado(ENTREGA_UI, mensagem=cerca(
+        {"status": "OK", "arquivos_alterados": ["api/routes/users.ts"],
+         "comandos_para_subir": [], "resumo": "rota"})))
+    e = entregas()
+    ok(len(e) == 1 and e[0]["modo"] == "contrato", f"o texto deveria vencer: {e!r}")
 
 
 def main():

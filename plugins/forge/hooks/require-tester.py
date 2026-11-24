@@ -22,7 +22,9 @@ depois, como notificação. Por isso a decisão saiu do `PostToolUse` e foi para
       sempre (nunca entra em laço) e cada entrega é cobrada UMA vez (o campo `cobrado`), para
       a guarda não virar ladainha a cada turno depois de o usuário ter decidido.
 O retorno do `dev` vem tipicamente dentro de uma cerca ```json com texto solto em volta; o
-parser abaixo tolera cerca e prosa.
+parser abaixo tolera cerca e prosa. Agente de workflow (`forge:executar-lote`, `forge:investigar`)
+roda com `schema` e entrega o retorno pela ferramenta `StructuredOutput`: sem contrato no texto,
+o SubagentStop usa o último `StructuredOutput` do `agent_transcript_path` (o texto tem prioridade).
 
 POR QUE ISSO IMPORTA — o custo do palpite pela entrada
 Decidir por uma lista de palavras genéricas (`dashboard`, `layout`, `tela`, `botão`,
@@ -256,6 +258,7 @@ TETO_VISTOS = 200
 VEREDITOS = ("PASSOU", "FALHOU", "BLOQUEADO")
 SEM_CONTRATO = "sem-contrato"
 VEREDITO_APLICADO = "veredito"
+NOME_SAIDA_ESTRUTURADA = "StructuredOutput"
 
 Decisao = collections.namedtuple("Decisao", "modo texto arquivos resumo")
 
@@ -542,6 +545,40 @@ def _briefing_do_transcript(caminho) -> str:
     return ""
 
 
+def _entrada_estruturada(linha: str):
+    """`input` do `StructuredOutput` numa linha do transcript; None se a linha não o traz."""
+    try:
+        registro = json.loads(linha)
+    except ValueError:
+        return None
+    mensagem = registro.get("message") if isinstance(registro, dict) else None
+    conteudo = mensagem.get("content") if isinstance(mensagem, dict) else None
+    for bloco in reversed(conteudo) if isinstance(conteudo, list) else []:
+        if (isinstance(bloco, dict) and bloco.get("type") == "tool_use"
+                and bloco.get("name") == NOME_SAIDA_ESTRUTURADA
+                and isinstance(bloco.get("input"), dict)):
+            return bloco["input"]
+    return None
+
+
+def _saida_estruturada(caminho) -> str:
+    """Agente de workflow (roda com `schema`) entrega o contrato chamando `StructuredOutput`,
+    não em texto. Devolve o ÚLTIMO `input` dele como JSON, para o parser de texto de sempre
+    reconhecer; "" sem transcript, ilegível ou sem a chamada."""
+    if not isinstance(caminho, str) or not caminho:
+        return ""
+    try:
+        with open(os.path.expanduser(caminho), encoding="utf-8") as fh:
+            linhas = fh.readlines()
+    except (OSError, UnicodeDecodeError):
+        return ""
+    for linha in reversed(linhas):
+        entrada = _entrada_estruturada(linha)
+        if entrada is not None:
+            return json.dumps(entrada, ensure_ascii=False)
+    return ""
+
+
 def _texto_fallback(briefing: str):
     """O `dev` não seguiu o contrato JSON. Só nome de arquivo renderizável no briefing —
     nada de palavra genérica, que transformaria o lembrete em ruído.
@@ -719,12 +756,16 @@ def _tratar_subagent_stop(d: dict) -> int:
     def ler_briefing() -> str:
         return _briefing_do_transcript(d.get("agent_transcript_path"))
 
+    def saida_estruturada() -> str:
+        return _saida_estruturada(d.get("agent_transcript_path"))
+
     if papel == "dev":
-        retorno = _retorno_do_dev(mensagem)
+        retorno = _retorno_do_dev(mensagem) or _retorno_do_dev(saida_estruturada())
         _registrar_dev(pasta, agent_id, retorno, _decidir_dev(retorno, ler_briefing))
     else:
         _limpar_tester_em_andamento(pasta)
-        _registrar_veredito(pasta, agent_id, _retorno_do_tester(mensagem), ler_briefing)
+        retorno = _retorno_do_tester(mensagem) or _retorno_do_tester(saida_estruturada())
+        _registrar_veredito(pasta, agent_id, retorno, ler_briefing)
     return 0  # qualquer saída aqui manteria o SUBAGENTE rodando, não falaria com a raiz
 
 
