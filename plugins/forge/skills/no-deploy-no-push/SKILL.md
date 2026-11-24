@@ -103,7 +103,7 @@ git add .
 git commit -m "mensagem"
 git branch <nome>
 git checkout <branch>
-git merge <branch>
+git merge <branch>   # só em branch de feature; na principal, ver a seção "Repositório remoto, merge e loja"
 git log
 git status
 git diff

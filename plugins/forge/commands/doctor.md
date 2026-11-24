@@ -31,7 +31,7 @@ hook continua valendo, o resto degrada. Faltando → `atenção`, ação: `/forg
 
 Em **modo fábrica**, confira também se o bloco traz o **item 7** — a regra de que todo projeto
 vive em `projects/<nome>/`. Sem ele, um pedido como *"clone o repositório X"* feito fora do
-`/forge:forge` vai parar na raiz ou no diretório pessoal, porque nada no contexto diz onde os
+`/forge` vai parar na raiz ou no diretório pessoal, porque nada no contexto diz onde os
 projetos moram. Faltando → `atenção`, ação: rodar `/forge:setup` de novo (ele atualiza o bloco
 entre os marcadores, não duplica).
 

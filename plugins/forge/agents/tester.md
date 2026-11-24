@@ -1,6 +1,7 @@
 ---
 name: tester
-description: Valida a entrega de uma tarefa e emite veredito estruturado PASSOU/FALHOU/BLOQUEADO (BLOQUEADO = não deu para validar por causa do ambiente, nunca aprovação), com as falhas descritas em texto. Trabalha em dois modos: `browser`, que exercita a UI no Chrome real via claude-in-chrome, e `contrato`, sem navegador, para MCP server, CLI, API, YAML, schema e infra. Invoque-o depois que o `dev` entregar uma tarefa; o hook recomenda o modo.
+description: Valida a entrega de uma tarefa e emite veredito estruturado PASSOU/FALHOU/BLOQUEADO (BLOQUEADO = não deu para validar por causa do ambiente, nunca aprovação), com as falhas descritas em texto. Trabalha em dois modos (`browser`, que exercita a UI no Chrome real via claude-in-chrome; e `contrato`, sem navegador, para MCP server, CLI, API, YAML, schema e infra). Invoque-o depois que o `dev` entregar uma tarefa; o hook recomenda o modo.
+disallowedTools: Agent
 model: sonnet
 ---
 

@@ -37,6 +37,10 @@ Aguardando confirmação...
 - Qualquer `kill`, `pkill`, `killall`
 - Rodar migrations ou scripts que alteram o banco de dados
 
+> **Disciplina, não bloqueio.** O `ask` do settings cobre só prefixos de comando (`git push`,
+> `rm -r`, `killall`). O resto da lista desta skill é disciplina de quem executa, não bloqueio
+> automático: ninguém vai te parar se você não verificar.
+
 ## Confirmação antes de apagar ou forçar
 
 Pergunte ao usuário **antes** de qualquer um destes, mesmo que pareça consequência natural da tarefa:

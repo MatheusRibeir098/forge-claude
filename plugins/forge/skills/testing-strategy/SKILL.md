@@ -56,7 +56,7 @@ description: Use ao decidir o escopo de testes de uma mudança — teste o que m
 ## Pirâmide de testes para projetos com deploy em nuvem
 
 ```
-        E2E contra produção (claude-in-chrome)
+        E2E em ambiente real (claude-in-chrome)
        ───────────────────────────────────────
       Integração real (autenticação real + serviços de nuvem)
      ─────────────────────────────────────
@@ -65,4 +65,10 @@ description: Use ao decidir o escopo de testes de uma mudança — teste o que m
   Unit (Jest, lógica isolada)
 ```
 
-Cada camada testa o que a camada abaixo não cobre. Após deploy, sempre rodar integração real + E2E produção.
+Cada camada testa o que a camada abaixo não cobre. Após um deploy autorizado, rode a integração
+real e o E2E no ambiente que recebeu o deploy.
+
+**Onde o tester pode bater:** o padrão é ambiente local ou DEV. E2E em **produção** só com
+ordem explícita do usuário, depois de um deploy autorizado (ver `no-deploy-no-push`). Sem essa
+ordem, o topo da pirâmide roda em local ou DEV, e o que ficou sem validar em produção vai
+declarado no veredito.

@@ -19,8 +19,9 @@ dela com `Read`, pelo caminho no disco que o briefing der (ou
 `<plugin>/skills/<nome>/SKILL.md`; sem o caminho, um `find` limitado acha em segundos).
 
 Do plugin `forge` (sempre disponíveis): `clean-code`, `search-before-code`, `seguranca`,
-`lessons-learned`, `scaffolding`, `testing-strategy` (ao decidir o escopo de teste de uma
-mudança: teste o que mudou, não o projeto inteiro). Do plugin `forge-frontend` — **opcional**, só existe se
+`scaffolding`, `testing-strategy` (ao decidir o escopo de teste de uma
+mudança: teste o que mudou, não o projeto inteiro) e `lessons-learned` (específica de stack:
+leia só quando a stack ou o tema da tarefa bater com o que ela cobre). Do plugin `forge-frontend` — **opcional**, só existe se
 instalado junto:
 
 - `frontend-typescript`, `frontend-react-patterns`, `frontend-tailwind`,
@@ -130,8 +131,10 @@ listar os arquivos que são seus, trate essa lista como **fronteira rígida**:
 - **Frontend**: `pnpm create vite <nome> --template react-ts` + `pnpm add -D tailwindcss @tailwindcss/vite`.
 - **Backend**: `pnpm init` + `pnpm add express cors better-sqlite3` + `pnpm add -D typescript @types/express @types/cors @types/better-sqlite3 tsx`.
 - Estrutura: `backend/src/{routes,services,database.ts,index.ts}`, `frontend/src/{components,pages,hooks,lib,App.tsx,main.tsx}`.
-- Gerenciador: **pnpm** (nunca npm). Builds interativos já vêm pré-aprovados via `.npmrc` do
-  template — **não** rode `pnpm approve-builds`.
+- Gerenciador: **pnpm** (nunca npm). O `.npmrc` do template só traz conveniências de peers; a
+  aprovação de build scripts nativos (`better-sqlite3`, `esbuild`...) vai no `package.json` do
+  projeto, em `"pnpm": { "onlyBuiltDependencies": [...] }`. Declare lá e **não** rode
+  `pnpm approve-builds` (é interativo).
 
 ## Mentalidade de UI/UX (ao criar interfaces)
 
