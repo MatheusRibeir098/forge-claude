@@ -44,6 +44,9 @@ Limites que você precisa respeitar:
 
 - **Sem pergunta no meio.** O workflow não fala com o usuário: resolva decisão de produto,
   credencial e rumo antes de chamar, ou trate `BLOQUEADO`/`FALHOU` depois, no resultado.
+- **PARCIAL só de validação.** `dev` com `status: PARCIAL`, `build_ok: true` e
+  `so_falta_validacao: true` (falta só ver a UI ou bater na app) segue para o `tester` quando a
+  tarefa tem teste; qualquer outro `PARCIAL` volta a você com `proximo_briefing`.
 - **Arquivos disjuntos no lote.** Os `dev` rodam em paralelo; tarefas que se tocam vão em lotes
   diferentes (ver "Como particionar sem colisão").
 
@@ -266,7 +269,7 @@ mensagem; o retorno chega por notificação. Ele devolve:
 ```json
 { "status": "OK|PARCIAL|BLOQUEADO", "arquivos_alterados": [...],
   "entregaveis": ["/caminho/absoluto/no/projeto/resultado, se houver (nunca /tmp)"], "build_ok": true,
-  "comandos_para_subir": [...], "resumo": "...",
+  "so_falta_validacao": false, "comandos_para_subir": [...], "resumo": "...",
   "feito": [...], "falta": [...], "proximo_briefing": "...",
   "pendencias": [...] }
 ```
@@ -278,7 +281,7 @@ mensagem; o retorno chega por notificação. Ele devolve:
   `proximo_briefing` dele embutido (evita redescobrir o que ele já viu); e
   registre em `progress.md` que a tarefa foi re-loteada — se a **mesma** tarefa voltar
   `PARCIAL` duas vezes, o problema é a sua decomposição, não o teto: quebre bem menor.
-- **PARCIAL sem verificação visual**: retorno de `dev` sobre algo visual (UI, render, imagem gerada)
+- **PARCIAL sem verificação visual** (`so_falta_validacao: true`): retorno de `dev` sobre algo visual (UI, render, imagem gerada)
   sem verificação visual **é `PARCIAL`**, mesmo com `status: OK` e `build_ok: true` — mande o
   `tester` (ou abra a imagem) antes de dar por feito.
 - **Teto esgotado**: `SendMessage` para agente que esgotou o teto **não entrega nada** — o hook

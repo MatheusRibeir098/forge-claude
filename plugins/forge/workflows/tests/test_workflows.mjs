@@ -76,7 +76,7 @@ function porRotulo(respostas) {
 }
 
 function devOk(extra = {}) {
-  return { status: 'OK', arquivos_alterados: ['src/login.tsx'], build_ok: true, comandos_para_subir: ['pnpm dev --port 5173'], resumo: 'feito', ...extra }
+  return { status: 'OK', arquivos_alterados: ['src/login.tsx'], build_ok: true, so_falta_validacao: false, comandos_para_subir: ['pnpm dev --port 5173'], resumo: 'feito', ...extra }
 }
 
 function testerCom(veredito, extra = {}) {
@@ -109,10 +109,49 @@ async function cenarioCorrecaoAteAprovar() {
 }
 
 async function cenarioDevParcial() {
-  const parcial = devOk({ status: 'PARCIAL', proximo_briefing: 'continuar pelo formulário de cadastro' })
+  const parcial = devOk({ status: 'PARCIAL', so_falta_validacao: false, proximo_briefing: 'continuar pelo formulário de cadastro' })
   const { retorno, chamadas } = await rodarWorkflow('executar-lote', { tarefas: [tarefa('t2')] }, porRotulo({ 't2 · dev #1': parcial }))
   assert.equal(chamadas.length, 1, 'tester não deve rodar após dev PARCIAL')
   assert.deepEqual(retorno[0], { id: 't2', status_final: 'PARCIAL', tentativas: 1, dev: parcial, tester: null, proximo_briefing: 'continuar pelo formulário de cadastro' })
+}
+
+const PARCIAL_DE_VALIDACAO = { status: 'PARCIAL', so_falta_validacao: true, falta: ['ver a tela de login em desktop e mobile'] }
+
+async function cenarioParcialDeValidacaoSegueParaTester() {
+  const { retorno, chamadas, logs } = await rodarWorkflow('executar-lote', { tarefas: [tarefa('t5')] }, porRotulo({
+    't5 · dev #1': devOk(PARCIAL_DE_VALIDACAO),
+    't5 · tester #1': testerCom('PASSOU'),
+  }))
+  assert.deepEqual(chamadas.map((chamada) => chamada.label), ['t5 · dev #1', 't5 · tester #1'])
+  assert.equal(retorno[0].status_final, 'PASSOU')
+  assert.ok(logs.some((mensagem) => mensagem.includes('só de validação')), 'log deve registrar por que seguiu para o tester')
+}
+
+async function cenarioParcialDeValidacaoAposFalhaSegueParaTester() {
+  const { retorno, chamadas } = await rodarWorkflow('executar-lote', { tarefas: [tarefa('t6')] }, porRotulo({
+    't6 · dev #1': devOk(),
+    't6 · tester #1': testerCom('FALHOU', { falhas: [FALHA_DO_LOGIN], recomendacao_para_dev: 'ligar o onClick' }),
+    't6 · dev #2': devOk(PARCIAL_DE_VALIDACAO),
+    't6 · tester #2': testerCom('PASSOU'),
+  }))
+  assert.equal(chamadas.length, 4)
+  assert.equal(retorno[0].status_final, 'PASSOU')
+  assert.equal(retorno[0].tentativas, 2)
+}
+
+async function cenarioParcialDeValidacaoSemTesteVoltaParcial() {
+  const parcial = devOk({ ...PARCIAL_DE_VALIDACAO, proximo_briefing: 'só conferir a saída gerada' })
+  const { retorno, chamadas } = await rodarWorkflow('executar-lote', { tarefas: [tarefa('t7', 'nenhum')] }, porRotulo({ 't7 · dev #1': parcial }))
+  assert.equal(chamadas.length, 1, 'sem teste não há tester para validar')
+  assert.equal(retorno[0].status_final, 'PARCIAL')
+  assert.equal(retorno[0].proximo_briefing, 'só conferir a saída gerada')
+}
+
+async function cenarioParcialSemBuildOkVoltaParcial() {
+  const parcial = devOk({ ...PARCIAL_DE_VALIDACAO, build_ok: false })
+  const { retorno, chamadas } = await rodarWorkflow('executar-lote', { tarefas: [tarefa('t8')] }, porRotulo({ 't8 · dev #1': parcial }))
+  assert.equal(chamadas.length, 1, 'build quebrado não vai para o tester')
+  assert.equal(retorno[0].status_final, 'PARCIAL')
 }
 
 async function cenarioDevNulo() {
@@ -202,6 +241,10 @@ const CENARIOS = [
   ['regras do runtime: meta literal primeiro, sem APIs proibidas', cenarioRegrasDoRuntime],
   ['executar-lote: dev OK → tester FALHOU → dev OK → tester PASSOU', cenarioCorrecaoAteAprovar],
   ['executar-lote: dev PARCIAL volta para a raiz sem tester', cenarioDevParcial],
+  ['executar-lote: dev PARCIAL só de validação → tester PASSOU → PASSOU', cenarioParcialDeValidacaoSegueParaTester],
+  ['executar-lote: tester FALHOU → dev PARCIAL só de validação → tester PASSOU', cenarioParcialDeValidacaoAposFalhaSegueParaTester],
+  ['executar-lote: dev PARCIAL só de validação com teste nenhum volta PARCIAL', cenarioParcialDeValidacaoSemTesteVoltaParcial],
+  ['executar-lote: dev PARCIAL com build quebrado volta PARCIAL', cenarioParcialSemBuildOkVoltaParcial],
   ['executar-lote: dev null vira BLOQUEADO', cenarioDevNulo],
   ['executar-lote: FALHOU após o máximo de tentativas', cenarioFalhaAposMaxTentativas],
   ['executar-lote: testers browser em fila, contrato em paralelo', cenarioTestersBrowserEmFila],

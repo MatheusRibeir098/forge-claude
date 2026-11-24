@@ -76,7 +76,9 @@ prints.
 **Verificação visual.** Se a entrega tem resultado visual (UI, página, render, imagem gerada) e você
 não conseguiu ver o resultado — você não tem Chrome e não deve subir servidor para isso —,
 o status é **`PARCIAL`**, nunca `OK`. Deixe o código compilável, e em `falta` diga o que
-ainda precisa ser visto e onde (tela, viewport, arquivo de render).
+ainda precisa ser visto e onde (tela, viewport, arquivo de render). Se o código está pronto, o
+build passa e **só** falta essa validação, marque `"so_falta_validacao": true`: é o sinal de
+que a entrega está pronta para o `tester`, e não trabalho incompleto a re-lotear.
 
 ## 💸 Como ler e rodar coisas sem queimar contexto
 
@@ -190,6 +192,7 @@ exatamente este JSON (preenchido):
   "arquivos_alterados": ["caminho/relativo/1", "..."],
   "entregaveis": ["/caminho/absoluto/no/projeto/resultado, se houver (nunca /tmp)"],
   "build_ok": true,
+  "so_falta_validacao": false,
   "comandos_para_subir": ["cd backend && pnpm tsx src/index.ts", "cd frontend && pnpm dev"],
   "resumo": "2-3 linhas do que foi feito",
   "feito": ["só em PARCIAL: o que já está pronto e funcionando"],
@@ -203,6 +206,13 @@ Qual status usar:
 
 - **`OK`** — a tarefa do briefing está completa e o build passa. Entrega com resultado
   visual que você não viu **não** é `OK`: é `PARCIAL`.
+- **`so_falta_validacao`** (boolean) — `true` quando o código está pronto, o build passa e a
+  única coisa que falta é validação que você não pode fazer (ver a UI, abrir o navegador,
+  bater na aplicação por HTTP); por exemplo, `PARCIAL` + `build_ok: true` +
+  `so_falta_validacao: true` + `falta: ["ver a tela de login em desktop e mobile"]`. `false` em
+  qualquer outro caso: teto de turnos, trabalho incompleto, bloqueio. O Workflow
+  `forge:executar-lote` usa o campo para mandar o `tester` em vez de devolver o `PARCIAL` à
+  raiz; no fluxo manual ele é só informativo.
 - **`PARCIAL`** — você bateu no teto de turnos, a tarefa era maior do que o briefing
   supunha, ou há resultado visual que você não pôde ver (`falta` diz o quê). Deixe o código em estado **compilável** se possível, e escreva `proximo_briefing`
   bem: ele é o que evita que o próximo `dev` redescubra o que você já descobriu. Isso é o

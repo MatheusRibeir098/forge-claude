@@ -22,6 +22,7 @@ const DEV_SCHEMA = {
     arquivos_alterados: LISTA_DE_TEXTOS,
     entregaveis: LISTA_DE_TEXTOS,
     build_ok: { type: 'boolean' },
+    so_falta_validacao: { type: 'boolean' },
     comandos_para_subir: LISTA_DE_TEXTOS,
     resumo: { type: 'string' },
     feito: LISTA_DE_TEXTOS,
@@ -29,7 +30,7 @@ const DEV_SCHEMA = {
     proximo_briefing: { type: 'string' },
     pendencias: LISTA_DE_TEXTOS,
   },
-  required: ['status', 'arquivos_alterados', 'build_ok', 'comandos_para_subir', 'resumo'],
+  required: ['status', 'arquivos_alterados', 'build_ok', 'so_falta_validacao', 'comandos_para_subir', 'resumo'],
 }
 
 const TESTER_SCHEMA = {
@@ -147,9 +148,18 @@ function montarBriefingCorrecao(tarefa, dev, tester, tentativa) {
   ].join('\n\n')
 }
 
+// PARCIAL com código pronto e build verde, a que só falta a validação que o dev não pode fazer (ver a UI, abrir o navegador).
+function isProntoParaValidar(tarefa, dev) {
+  return dev.status === 'PARCIAL' && dev.so_falta_validacao === true && dev.build_ok === true && tarefa.teste !== 'nenhum'
+}
+
 // Devolve o status final quando o ciclo termina no dev; null quando segue para o tester.
 function encerramentoAposDev(tarefa, dev) {
   if (!dev) return 'BLOQUEADO'
+  if (isProntoParaValidar(tarefa, dev)) {
+    log(`${tarefa.id}: dev PARCIAL só de validação com build ok, seguindo para o tester`)
+    return null
+  }
   if (dev.status !== 'OK') return dev.status
   if (tarefa.teste === 'nenhum') return 'SEM_TESTE'
   return null
