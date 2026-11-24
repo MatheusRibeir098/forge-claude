@@ -21,9 +21,46 @@ Você (Forge / orquestrador)
   └─ avalia → marca done / re-briefa → registra em .forge/progress.md
 ```
 
-O "fim" de cada etapa é o **retorno da ferramenta `Agent`**, determinístico — nunca infira observando
+O "fim" de cada etapa é o **retorno estruturado do subagente** — nunca infira observando
 terminal. Este é o caminho de **uma** tarefa; várias tarefas independentes rodam juntas, ver
-"Paralelismo".
+"Paralelismo". No caminho principal (Workflow, abaixo) o próprio script encadeia
+`dev` → `tester` → correção; o desenho acima é o que você faz à mão no fallback.
+
+## Workflow primeiro, Agent manual como fallback
+
+Com o lote montado, **chame o Workflow `forge:executar-lote`** (e `forge:investigar` para
+investigação) em vez de conduzir cada `Agent` você mesmo. O passo a passo está no `/forge`
+("Loop de execução"). Por quê:
+
+- **Tester garantido pelo código.** O script sempre roda `forge:tester` depois do `forge:dev`
+  nas tarefas com superfície testável; não depende de você (ou de um hook) lembrar.
+- **Retorno validado por schema.** `dev` e `tester` devolvem JSON conferido pelo script, não
+  texto que você precisa interpretar.
+- **Contexto da raiz enxuto.** Retornos intermediários, tentativas e correções ficam no
+  workflow; você recebe só o resultado final por tarefa. Cada token da raiz é reenviado a cada turno.
+- **Acompanhamento em `/workflows`.**
+
+Limites que você precisa respeitar:
+
+- **Sem pergunta no meio.** O workflow não fala com o usuário: resolva decisão de produto,
+  credencial e rumo antes de chamar, ou trate `BLOQUEADO`/`FALHOU` depois, no resultado.
+- **Arquivos disjuntos no lote.** Os `dev` rodam em paralelo; tarefas que se tocam vão em lotes
+  diferentes (ver "Como particionar sem colisão").
+
+**Fallback manual** (ferramenta Workflow ausente, desligada por `disableWorkflows` ou CLI
+antiga): conduza com `Agent` como descrito nas seções seguintes. Lembre que o **`Agent` é
+assíncrono**: o subagente roda em background e o retorno chega depois, como notificação, não
+como resultado da chamada. Não declare uma tarefa pronta antes da notificação e não encadeie o
+`tester` antes dela.
+
+### Não use `general-purpose` como sub-orquestrador
+
+Não delegue o loop `dev`→`tester` a um `general-purpose` que crie os subagentes por você. Ele
+pode aninhar até 3 níveis, mas isso põe uma decisão do modelo numa camada extra, reenvia o
+contexto dele a cada turno e os hooks não têm campo de pai para saber de quem é cada chamada
+(a guarda do `tester` e a contenção de escrita ficam cegas ao encadeamento). Os agentes do
+Forge nem aninham: `dev` e `scout` não têm `Agent`, e o `tester` o desabilita. Quem orquestra é
+você ou o Workflow.
 
 ## Fluxo de investigação — quando não é código
 
@@ -31,18 +68,23 @@ O resto desta skill assume backlog de código (`tasks.md`, `dev`, `tester`). O *
 `/forge` (investigar incidente, ler banco/data lake, analisar custo, revisar infraestrutura)
 segue diferente:
 
-- O **`scout` é o papel principal**, não o `dev` — quantas instâncias fizerem sentido, todas
-  na mesma mensagem: são só-leitura, nunca colidem (checkpoint abaixo vale igual aqui, sem o
-  cuidado de arquivos disjuntos).
+- O **`scout` é o papel principal**, não o `dev`. O caminho é o Workflow `forge:investigar`
+  (um `scout` por frente, um `scout` cético que tenta refutar os achados e uma checagem de
+  completude). No fallback, dispare quantos `scout` fizerem sentido, todos na mesma mensagem:
+  são só-leitura, nunca colidem (checkpoint abaixo vale igual aqui, sem o cuidado de arquivos
+  disjuntos). Em investigação que toque banco ou data lake, indique a skill
+  `banco-de-dados-leitura-segura`.
 - A entrega é **um relatório único** (`.forge/investigacao-<data>.md`), montado por você a
-  partir do JSON de cada `scout` — não `tasks.md`, não backlog atômico.
+  partir do resultado do workflow (ou do JSON de cada `scout`) — com achados confirmados,
+  refutados, não verificados e lacunas; não `tasks.md`, não backlog atômico.
 - **Só vira código se o usuário pedir**, depois de ler o relatório. Aí decomponha a correção
   em `tasks.md` e siga o resto desta skill normalmente.
 
 ## Paralelismo — o padrão, não a exceção
 
 **Mecânica:** subagentes só rodam em paralelo se as chamadas da ferramenta `Agent` estiverem **na
-mesma mensagem**. Uma por mensagem = fila sequencial, mesmo com trabalhos independentes.
+mesma mensagem**. Uma por mensagem = fila sequencial, mesmo com trabalhos independentes. (No
+Workflow `forge:executar-lote` o paralelismo dos `dev` do lote já vem do script.)
 
 ### Checkpoint de paralelismo (rode antes de cada invocação)
 
@@ -207,8 +249,10 @@ Um bom briefing é **auto-contido** — o subagente não tem o histórico da sua
 
 - **Aviso de concorrência** (quando o lote tem mais de um `dev`): *"você só edita `<arquivos>`,
   nada de `pnpm install` — outro agente trabalha em paralelo."*
-- **Como ler**: `dev` e `scout` não declaram `Grep` nem `Glob` no frontmatter, e essas
-  ferramentas podem faltar em outros runtimes — não mande o subagente usá-las.
+- **Como ler**: as permissions do setup liberam `cat`, `Glob` e `Grep` para a sessão não
+  travar em pedido de aprovação, mas **nos briefings continue preferindo `Read` e
+  `command grep`/`find`**: `dev` e `scout` não declaram `Grep` nem `Glob` no frontmatter, e essas
+  ferramentas podem faltar no runtime do subagente — não mande o subagente usá-las.
   Arquivo conhecido → `Read` (com `limit`/`offset` em arquivo grande); busca →
   `command grep -rn <padrão> <pasta> | head -40` e `find <pasta> -name '<glob>'` com filtro e
   limite; listagem → `command ls` (se `ls` estiver aliasado — `eza`, `lsd` —, a saída muda e pode travar). Nunca `cat`, e proíba
@@ -217,7 +261,8 @@ Um bom briefing é **auto-contido** — o subagente não tem o histórico da sua
   arquitetura, contrato compartilhado difícil ou destravamento de Loop Travado, diga no
   briefing que é para rodar em opus (opus consome mais por invocação que sonnet).
 
-Invoque o `dev` com o briefing — um por tarefa do lote, todos na mesma mensagem. Retorna:
+No fallback manual, invoque o `dev` com o briefing — um por tarefa do lote, todos na mesma
+mensagem; o retorno chega por notificação. Ele devolve:
 ```json
 { "status": "OK|PARCIAL|BLOQUEADO", "arquivos_alterados": [...],
   "entregaveis": ["/caminho/absoluto/no/projeto/resultado, se houver (nunca /tmp)"], "build_ok": true,
@@ -268,21 +313,24 @@ ser chamado. Duas consequências ruins:
 - um hook **bloqueia** o `dev` de subir a aplicação, rodar browser/E2E, capturar evidência e
   bater na app por HTTP (ele mantém `tsc`/`build`/lint/teste unitário e qualquer script
   próprio, inclusive em background — é o `build_ok` que ele reporta);
-- outro hook (`require-tester.py`, `PostToolUse` em `Agent`) **injeta um lembrete** quando o
-  `dev` termina. Ele dispara no término, lê o **retorno** do `dev` (`arquivos_alterados` e
-  `comandos_para_subir`, não o briefing) e injeta o modo do `tester` (`browser`, `contrato`
-  ou nenhum) com esses dados prontos (verificado na CLI 2.1.272).
+- outro hook (`require-tester.py`) vigia o fim do `dev`: como o `Agent` é assíncrono, ele lê o
+  `SubagentStop` e, havendo entrega do `dev` sem `tester`, **bloqueia uma vez o fim do turno**
+  da raiz. Ele lê o **retorno** do `dev` (`arquivos_alterados` e `comandos_para_subir`, não o
+  briefing) e indica o modo do `tester` (`browser`, `contrato` ou nenhum) com esses dados
+  prontos. No Workflow `forge:executar-lote` o `tester` já está no script e a guarda nem
+  precisa agir.
 
 Logo: **toda tarefa com UI, rota ou endpoint precisa de uma invocação de `tester`.** Se você
-não invocar, ninguém validou. Use os `comandos_para_subir` que o `dev` devolveu.
+(ou o workflow) não invocar, ninguém validou. Use os `comandos_para_subir` que o `dev` devolveu.
 
 Tarefa sem nada observável (refactor puro, tipo, script interno) segue sem `tester` — a prova
 ali é o `build_ok` e a leitura do diff.
 
 ## Briefing para o `tester` (um briefing por modo)
 
-O `tester` valida **apenas** o que a tarefa implementou. O hook já injetou o modo,
-`arquivos_alterados` e `comandos_para_subir` — não releia nada, só monte o briefing certo:
+O `tester` valida **apenas** o que a tarefa implementou. O hook (ou o workflow) já traz o
+modo, `arquivos_alterados` e `comandos_para_subir` — não releia nada, só monte o briefing certo
+(no workflow, é o campo `briefing_tester` de cada tarefa):
 
 - **Modo `browser`**: como subir (os `comandos_para_subir` do hook), quais telas/estados
   validar, e quais evidências capturar com teto **explícito** (*"no máximo 2: a lista com
@@ -293,6 +341,8 @@ O `tester` valida **apenas** o que a tarefa implementou. O hook já injetou o mo
   aceite do `tasks.md`** conferir — contra o aceite, não contra a intenção declarada pelo
   `dev`. Zero prints: aqui imagem não prova nada.
 - **Skills a consultar**: 1–2, como no briefing do `dev` (com o caminho do `SKILL.md`).
+- **Teto de chamadas do `tester`**: as chamadas do Chrome contam — aviso em 180, teto em 250.
+  Valide só o que a tarefa implementou; escopo grande demais esgota o teto e volta `BLOQUEADO`.
 
 Ele retorna:
 ```json
@@ -401,7 +451,7 @@ uma das alavancas de custo mais fortes do Forge**, ao lado do modelo e do volume
 | Fonte | Por que pesa | Como controlar |
 |---|---|---|
 | **Turnos por invocação** | cada turno reenvia o contexto acumulado | Tarefa atômica de verdade; `PARCIAL` no teto e re-loteio |
-| **Bash** | a saída de cada comando entra no contexto e é reenviada nos turnos seguintes | No briefing: `Read` (arquivo conhecido) e `command grep -rn`/`find` com filtro e limite, em vez de `cat`; filtrar na fonte (`Grep`/`Glob` podem não estar disponíveis ao subagente) |
+| **Bash** | a saída de cada comando entra no contexto e é reenviada nos turnos seguintes | No briefing: `Read` (arquivo conhecido) e `command grep -rn`/`find` com filtro e limite, em vez de `cat`; filtrar na fonte (`Grep`/`Glob` estão liberados na sessão, mas podem faltar no runtime do subagente) |
 | **`Read` de arquivo inteiro** | o arquivo todo fica no contexto pelo resto da invocação | Nomeie os arquivos, exija `limit`/`offset`, proíba releitura |
 | **Modelo** | modelos maiores consomem mais por invocação | `sonnet` padrão; opus só em arquitetura/Loop Travado. Os três já fixam `model` no frontmatter — não sobrescreva |
 | **Lote acoplado** | agentes no mesmo módulo geram conflito e retrabalho | Arquivos disjuntos, teto de 3–4 |

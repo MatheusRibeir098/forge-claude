@@ -45,9 +45,9 @@ escrita do modo projeto bloquearia a nova pasta) e pare.
    > (componentes, rotas, schema) é sempre do subagente `dev` — nunca escreva você mesmo.
 4. **Montar o backlog**: derive as tarefas atômicas do `prompt.md` para
    `projects/<nome>/.forge/tasks.md` (ver skill `orchestrator`). Apresente o plano ao usuário.
-5. **Entrar no loop de execução** (a MESMA sessão assume o papel de monitor): siga a skill
-   `orchestrator` — por tarefa: briefing → subagente `dev` → revisão → subagente `tester` →
-   avaliação → registro em `.forge/progress.md`. Não lance processos externos para coordenar subagentes.
+5. **Entrar no loop de execução** (a MESMA sessão assume o papel de monitor): siga a seção
+   **Loop de execução** abaixo e a skill `orchestrator`. Não lance processos externos para
+   coordenar subagentes.
 
 ## Fluxo 2 — Fix/implementação
 
@@ -64,7 +64,48 @@ escrita do modo projeto bloquearia a nova pasta) e pare.
    usuário o que ele devolver.
 3. **Entender o pedido**: transforme o bug/feature em tarefas atômicas em
    `projects/<nome>/.forge/tasks.md`.
-4. **Entrar no loop** (mesmo loop do Fluxo 1, via skill `orchestrator`).
+4. **Entrar no loop** (mesmo da seção **Loop de execução** abaixo, via skill `orchestrator`).
+
+## Loop de execução (Fluxos 1 e 2)
+
+Com o lote pronto no `.forge/tasks.md`, monte o briefing auto-contido de cada tarefa (skill
+`orchestrator`) e **chame o Workflow `forge:executar-lote`** (ferramenta **Workflow**, pelo
+nome), passando em `args`:
+
+```json
+{ "tarefas": [{ "id": "T3", "briefing_dev": "...", "teste": "browser | contrato | nenhum",
+                "briefing_tester": "..." }],
+  "max_tentativas": 3 }
+```
+
+- O workflow roda, por tarefa, `forge:dev` → `forge:tester` → correção, até o máximo de
+  tentativas. Os `dev` do lote rodam em paralelo; os `tester` em modo `browser` entram em fila
+  (há um Chrome só) e os de `contrato` rodam em paralelo.
+- **As tarefas de um mesmo lote precisam ter arquivos disjuntos**, porque os `dev` rodam ao
+  mesmo tempo. Tarefa que depende de outra vai em lote seguinte.
+- Ele **não pergunta nada ao usuário no meio**: decisão de produto, credencial e escolha de
+  rumo ficam para antes do lote ou para depois do resultado.
+- Acompanhamento em `/workflows`.
+
+Ao receber o resultado (`status_final` por tarefa), atualize o `.forge/progress.md` tarefa a
+tarefa e aja conforme o caso:
+
+- **PASSOU** → marque `[x]` no `tasks.md` e faça o commit (PT-BR).
+- **PARCIAL** → re-lote com o `proximo_briefing` embutido (skill `orchestrator`, "Revisão do
+  retorno do dev").
+- **FALHOU** depois do máximo de tentativas → **Loop Travado**: reformule o briefing por outro
+  ângulo e rode de novo; se persistir, pare e pergunte ao usuário.
+- **BLOQUEADO** → resolva o ambiente (credencial, serviço, Chrome) ou pergunte ao usuário.
+  Nunca conta como aprovação.
+- **SEM_TESTE** → só para tarefa sem superfície testável (refactor puro, tipo, script interno);
+  a prova ali é o `build_ok` e a leitura do diff.
+
+**Fallback.** Se a ferramenta Workflow não existir ou estiver desligada (`disableWorkflows`,
+CLI antiga), faça o loop manual com `Agent`: `dev` → `tester` → avaliação, um `Agent` por
+tarefa do lote na mesma mensagem. Lembre que o `Agent` roda em background e **o retorno chega
+depois, como notificação**, não como resultado da chamada: não responda ao usuário como se a
+tarefa tivesse terminado antes de receber o retorno. O hook `require-tester` barra o fim do
+turno quando há entrega do `dev` sem `tester`.
 
 ## Fluxo 3 — Investigar/Analisar
 
@@ -75,12 +116,27 @@ repositório. **Read-only por padrão** — não abre o loop `dev`→`tester`.
 1. **Antes de tocar qualquer conta de nuvem ou ambiente remoto**: confirme conta/perfil/região
    ativos. Vale para os três fluxos, mas o risco é maior aqui — nunca
    assuma o perfil certo.
-2. **O `scout` é o papel principal**, não o `dev`. Dispare quantos `scout` fizerem sentido,
-   todos na mesma mensagem — são só-leitura e nunca colidem (skill `orchestrator`). Cite,
-   conforme o caso: `banco-de-dados-leitura-segura` (consulta a banco/data lake).
-3. **Correlacione o retorno dos `scout`** e monte a entrega: **um arquivo único**,
-   `projects/<nome>/.forge/investigacao-<AAAA-MM-DD>.md` — **não** `tasks.md`. Não force
-   backlog de tarefas atômicas numa entrega que não é código.
+2. **Chame o Workflow `forge:investigar`** (ferramenta **Workflow**, pelo nome), passando em
+   `args` a pergunta e as frentes:
+
+   ```json
+   { "pergunta": "...", "frentes": [{ "titulo": "...", "escopo": "..." }] }
+   ```
+
+   Ele roda um `scout` por frente, depois um `scout` cético que tenta refutar cada achado
+   (teto de 8 por frente) e uma checagem de completude. Retorna, por frente, `resposta`,
+   `achados_confirmados`, `achados_refutados` e `achados_nao_verificados`, mais as `lacunas`
+   gerais. Quando a investigação tocar banco ou data lake, cite nos escopos das frentes a skill
+   `banco-de-dados-leitura-segura` (consulta somente leitura).
+3. **Escreva a entrega**: **um arquivo único**,
+   `projects/<nome>/.forge/investigacao-<AAAA-MM-DD>.md` — **não** `tasks.md` — com os achados
+   **confirmados**, os **refutados**, os **não verificados** e as **lacunas**. Não force backlog
+   de tarefas atômicas numa entrega que não é código.
+
+   **Fallback** (Workflow ausente ou desligado): dispare os `scout` manualmente, um por frente,
+   todos na mesma mensagem (são só-leitura e nunca colidem; o retorno chega por notificação,
+   pois o `Agent` roda em background), correlacione os JSONs e monte o mesmo arquivo. Cite a
+   skill `banco-de-dados-leitura-segura` no briefing do `scout` que tocar banco ou data lake.
 4. **Mostre o relatório ao usuário.** Só entra no loop `dev`→`tester` do Fluxo 2 se, depois de
    lido, ele pedir uma correção — aí vira tarefa normal.
 
@@ -98,7 +154,8 @@ repositório. **Read-only por padrão** — não abre o loop `dev`→`tester`.
   decomponha de verdade — tarefa que não cabe em ~35 chamadas de ferramenta volta `PARCIAL` e
   você re-loteia (não re-briefa a tarefa inteira). Nos briefings: nomeie 1–2 skills e mande
   usar `Read` para arquivo conhecido e `command grep -rn`/`find` com filtro e limite para busca. **Invocar o `tester` é obrigatório**
-  em tarefa com UI/rota/endpoint — o hook já decide o modo pelo retorno do `dev` e te avisa em
+  em tarefa com UI/rota/endpoint — o Workflow `forge:executar-lote` garante isso por código; no
+  fallback manual, o hook decide o modo pelo retorno do `dev` e te avisa em
   uma linha, sem perguntar: modo `browser` (mexeu em arquivo renderizável + o `dev` devolveu
   `comandos_para_subir`) valida no Chrome real via `claude-in-chrome`, serial, teto de 5
   evidências; modo `contrato` (MCP/CLI/API/YAML/schema/infra) chama as tools de verdade e

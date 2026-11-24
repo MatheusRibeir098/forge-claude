@@ -19,7 +19,7 @@ sem apagar nada que o usuário já tenha.
 
 ## Bloco canônico de permissions
 
-O bloco abaixo é a fonte canônica (41 `allow` / 6 `ask` / 3 `deny`). O `ask` cobre operações destrutivas ou de rede que exigem confirmação
+O bloco abaixo é a fonte canônica (43 `allow` / 6 `ask` / 3 `deny`). O `ask` cobre operações destrutivas ou de rede que exigem confirmação
 explícita (`git push`, `rm -r` e variantes, `killall`). O `allow` libera leitura, git de
 baixo risco, gerenciadores de pacote e as variantes `rtk` (opcional — só fazem sentido se
 `rtk` estiver no `PATH`). O `deny` traz só o mínimo genérico: `git push` forçado (`--force`, `-f`,
@@ -43,6 +43,8 @@ fácil; a ferramenta precisa parar e pedir confirmação em vez de executar sozi
       "WebSearch",
       "WebFetch",
       "Task",
+      "Workflow(forge:executar-lote)",
+      "Workflow(forge:investigar)",
       "Bash(pnpm:*)",
       "Bash(npm:*)",
       "Bash(npx:*)",
@@ -95,6 +97,11 @@ fácil; a ferramenta precisa parar e pedir confirmação em vez de executar sozi
   }
 }
 ```
+
+As duas entradas `Workflow(...)` liberam os workflows do plugin (`/forge:executar-lote` e
+`/forge:investigar`). Nota: a doc documenta `Workflow(<nome>)` para workflow salvo; a forma com
+namespace de plugin ainda não foi testada — se não casar, o "Yes, and don't ask again" do
+primeiro uso resolve.
 
 O `Bash(...)` só casa **prefixo exato + `:*`** — não existe glob no meio do comando. Por isso
 as regras são rede de segurança, não a única camada: flags ou encadeamentos antes do comando
