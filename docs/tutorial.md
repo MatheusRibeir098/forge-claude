@@ -52,9 +52,10 @@ O controle fica em `.forge/` na raiz dele.
 O hook detecta sozinho: se a raiz tem `projects/` e `templates/prompt.template.md`, é fábrica.
 
 > Na fábrica, para trabalhar num projeto existente, abra a sessão em `projects/<nome>/`: o
-> `CLAUDE.md` da fábrica é herdado, os hooks do Forge valem ali e bloqueiam escrita fora do
-> projeto (liberados só `/tmp` e `~/.claude*`). Abra na raiz da base só para criar projeto novo,
-> para trabalho que cruza projetos e para a manutenção do próprio Forge.
+> `CLAUDE.md` da fábrica é herdado e os hooks do Forge valem ali, sem bloquear escrita fora do
+> projeto (o orquestrador segue sem escrever código; quem escreve é o `dev`). Abra na raiz da
+> base para criar projeto novo, para trabalho que cruza projetos e para a manutenção do próprio
+> Forge.
 
 ## 4. Os três fluxos
 
@@ -177,5 +178,7 @@ aviso começando com `[pasta base]`. Não precisa fazer nada. Ele não decide pe
 continua com as `permissions`) e, se algo estranho acontecer, deixa o comando passar
 intacto. O aviso é só um lembrete para o agente usar `cd x && cmd` ou caminhos absolutos.
 
-Numa sessão **aberta** dentro de `projects/<nome>/`, a pasta base é o próprio projeto, e a
-escrita fora dele é bloqueada pelos hooks.
+Numa sessão **aberta** dentro de `projects/<nome>/`, a pasta base continua sendo o próprio
+projeto (o Bash volta para ela), mas os hooks não contêm a escrita: os subagentes escrevem em
+qualquer lugar e o orquestrador não escreve código em lugar nenhum (fora do projeto só passam
+`.md`, `prompt.md`, pastas `.forge/` e artefatos).

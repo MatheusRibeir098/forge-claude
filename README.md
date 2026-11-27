@@ -276,8 +276,8 @@ Abra o Claude Code **na raiz** do repositório onde você vai trabalhar e rode:
 > [!NOTE]
 > Numa fábrica, abra a sessão na raiz para criar projeto novo, para trabalho que cruza projetos
 > e para a manutenção do próprio Forge. Para trabalhar num projeto existente, abra em
-> `projects/<nome>/`: o `CLAUDE.md` da fábrica é herdado e os hooks bloqueiam escrita fora do
-> projeto (liberados só `/tmp` e `~/.claude*`).
+> `projects/<nome>/`: o `CLAUDE.md` da fábrica é herdado e os hooks não bloqueiam escrita fora
+> do projeto (o orquestrador segue sem escrever código; quem escreve é o `dev`).
 
 ### Atualizar e remover
 

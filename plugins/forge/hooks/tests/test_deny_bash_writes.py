@@ -130,7 +130,7 @@ def _subagente():
     com_repo(corpo)
 
 
-@caso("raiz com agent_type e SEM agent_id (claude --agent) continua contida")
+@caso("raiz com agent_type e SEM agent_id (claude --agent) continua barrada")
 def _raiz_com_agent_type():
     def corpo(d):
         for c in NEGADOS:
@@ -209,35 +209,36 @@ def mundo(fn, base=BASE_FORA_DO_TMP):
         shutil.rmtree(home)
 
 
-@caso("projeto da fábrica, principal: código negado, controle liberado, fora do projeto negado")
+@caso("projeto da fábrica, principal: código negado dentro e fora; não-código liberado")
 def _projeto_principal():
     def corpo(x, d, home, env):
         for c in ("echo x > src/a.ts", "tee src/a.ts", "sed -i s/a/b/ src/a.ts",
-                  "cp /tmp/a.ts src/a.ts", "echo x > ../y/README.md", "echo x > ../y/a.ts",
-                  f"echo x >> {d}/CLAUDE.md", f"cp a.md {d}/templates/", "mv a.md ../y/b.md",
-                  f"echo x > {home}/.cache/a.md", "echo x > ../y/saida.txt"):
+                  "cp /tmp/a.ts src/a.ts", "echo x > ../y/a.ts", "tee ../y/requirements.txt",
+                  f"cp a.py {d}/templates/", "mv a.ts ../y/b.ts", f"echo x > {home}/.cache/a.ts"):
             ok(roda(x, c, env=env)[0], f"deveria negar: {c!r}")
         for c in (
                 "echo x > .forge/progress.md", "echo x > README.md", "echo x > build.log",
                 "cmd > /dev/null", "echo x > /tmp/forge-teste-livre/a.ts",
                 f"echo x > {home}/.claude/projects/-x/memory/a.md",
                 f"echo x > {home}/.claude-empresa/plans/p.md", "cd sub && echo x > notas.md",
-                "git diff > /tmp/d.patch"):
+                "git diff > /tmp/d.patch", "echo x > ../y/README.md", "echo x > ../y/saida.txt",
+                "echo x > ../y/.forge/estado.json", "echo x > ../y/prompt.md",
+                f"echo x >> {d}/CLAUDE.md", "mv a.md ../y/b.md", f"echo x > {home}/.cache/a.md"):
             negou, saida = roda(x, c, env=env)
             ok(not negou, f"deveria liberar: {c!r}\n{saida}")
     mundo(corpo)
 
 
-@caso("projeto da fábrica, subagente: livre no projeto, negado fora (exceto /tmp e ~/.claude*)")
+@caso("projeto da fábrica, subagente: livre em qualquer lugar")
 def _projeto_subagente():
     def corpo(x, d, home, env):
         for ag in ("dev", "tester"):
             for c in ("echo x > src/a.ts", "sed -i s/a/b/ src/a.ts", "tee e2e/a.spec.ts",
-                      "echo x > /tmp/a", f"echo x > {home}/.claude/a.md"):
+                      "echo x > /tmp/a", f"echo x > {home}/.claude/a.md",
+                      "echo x > ../y/src/a.ts", "echo x > ../y/README.md", f"tee {d}/CLAUDE.md",
+                      "cp src/a.ts ../y/a.ts", "cd .. && echo x > y/a.ts",
+                      f"tee {d}/projects/novo/package.json"):
                 ok(not roda(x, c, agent_type=ag, env=env)[0], f"{ag} pode: {c!r}")
-            for c in ("echo x > ../y/src/a.ts", "echo x > ../y/README.md", f"tee {d}/CLAUDE.md",
-                      "cp src/a.ts ../y/a.ts", "cd .. && echo x > y/a.ts"):
-                ok(roda(x, c, agent_type=ag, env=env)[0], f"{ag} não pode: {c!r}")
     mundo(corpo)
 
 
@@ -245,37 +246,39 @@ def _projeto_subagente():
 def _projeto_sub_e_saidas():
     def corpo(x, d, home, env):
         sub = os.path.join(x, "sub")
-        ok(roda(sub, "echo x > ../../y/a.md", env=env)[0], "sub: y está fora do projeto x")
+        ok(roda(sub, "echo x > ../../y/a.ts", env=env)[0], "sub: código em y negado")
+        ok(not roda(sub, "echo x > ../../y/a.md", env=env)[0], "sub: markdown em y liberado")
         ok(roda(sub, "echo x > ../src/a.ts", env=env)[0], "sub: código em x negado")
         ok(not roda(sub, "echo x > ../.forge/p.md", env=env)[0], "sub: .forge de x liberado")
         ok(not roda(sub, "echo x > ../src/a.ts", agent_type="dev", env=env)[0], "sub: dev em x")
         os.symlink(os.path.join(d, "projects", "y"), os.path.join(x, "atalho"))
         for ag in (None, "dev"):
-            ok(roda(x, "echo x > atalho/README.md", agent_type=ag, env=env)[0],
-               f"symlink para y negado ({ag})")
-            ok(roda(x, "echo x > src/../../y/README.md", agent_type=ag, env=env)[0],
-               f"`..` para y negado ({ag})")
+            nega_codigo = ag is None
+            ok(roda(x, "echo x > atalho/a.ts", agent_type=ag, env=env)[0] == nega_codigo,
+               f"symlink para y, código ({ag})")
+            ok(roda(x, "echo x > src/../../y/a.ts", agent_type=ag, env=env)[0] == nega_codigo,
+               f"`..` para y, código ({ag})")
+            ok(not roda(x, "echo x > atalho/README.md", agent_type=ag, env=env)[0],
+               f"symlink para y, markdown ({ag})")
     mundo(corpo)
 
 
-@caso("projeto da fábrica: mensagem da contenção cita projeto, caminho, fábrica e Bash")
+@caso("projeto da fábrica: mensagem de código manda delegar ao dev, sem texto de contenção")
 def _projeto_mensagem():
     def corpo(x, d, home, env):
-        _, saida = roda(x, "echo x > ../y/README.md", env=env)
-        razao = json.loads(saida)["hookSpecificOutput"]["permissionDecisionReason"]
-        for trecho in ("fora da pasta do projeto", "Bash", "'x'", os.path.realpath(x),
-                       os.path.realpath(d), "/tmp", "~/.claude*"):
-            ok(trecho in razao, f"faltou {trecho!r} em: {razao}")
-        _, saida = roda(x, "echo x > src/a.ts", env=env)
-        razao = json.loads(saida)["hookSpecificOutput"]["permissionDecisionReason"]
-        ok("subagente dev" in razao and "Contornar uma negação" in razao, razao)
+        for c in ("echo x > ../y/src/a.ts", "echo x > src/a.ts"):
+            _, saida = roda(x, c, env=env)
+            razao = json.loads(saida)["hookSpecificOutput"]["permissionDecisionReason"]
+            ok("subagente dev" in razao and "Contornar uma negação" in razao, razao)
+            ok("projeto da fábrica" in razao and "fora da pasta do projeto" not in razao, razao)
     mundo(corpo)
 
 
 @caso("fábrica dentro de /tmp: a exceção de /tmp não vaza para a fábrica")
 def _projeto_fabrica_em_tmp():
     def corpo(x, d, home, env):
-        ok(roda(x, "echo x > ../y/README.md", agent_type="dev", env=env)[0], "y segue fora")
+        ok(roda(x, "echo x > ../y/a.ts", env=env)[0], "código em y segue negado")
+        ok(not roda(x, "echo x > ../y/a.ts", agent_type="dev", env=env)[0], "dev escreve em y")
         ok(not roda(x, "echo x > /tmp/forge-teste-livre/a.ts", env=env)[0], "/tmp segue livre")
     mundo(corpo, base=None)
 

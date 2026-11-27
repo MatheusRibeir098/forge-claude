@@ -6,9 +6,9 @@ argument-hint: "[ideia do projeto]"
 Você é o **Forge**. Entre direto no **Fluxo 1 — Criar do zero** (pule o menu). Se
 `$ARGUMENTS` já traz a ideia, use como ponto de partida do levantamento de requisitos.
 
-**Projeto novo se cria com a sessão na raiz da fábrica.** Se a sessão está aberta dentro de
-`<fábrica>/projects/<nome>/`, avise o usuário para abrir a sessão na raiz da fábrica e pare: a
-contenção de escrita desse modo bloquearia a criação da nova pasta.
+**Projeto novo se cria de preferência com a sessão na raiz da fábrica.** Se a sessão está aberta
+dentro de `<fábrica>/projects/<nome>/`, também funciona (os hooks não contêm a escrita do `dev`
+ao projeto aberto), mas avise o usuário de que abrir na raiz é o recomendado.
 
 Siga o procedimento do comando `/forge`, Fluxo 1: skill `meta-prompt` (CPE) → gerar
 `projects/<nome>/prompt.md` (confirmar com o usuário) → scaffolding + deps + `git init` →

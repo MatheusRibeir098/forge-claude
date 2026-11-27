@@ -25,9 +25,10 @@ Escolha (1, 2 ou 3):
 
 ## Fluxo 1 — Criar do zero
 
-Projeto novo se cria com a sessão na raiz da fábrica. Se a sessão está aberta dentro de
-`<fábrica>/projects/<nome>/`, avise o usuário para abrir na raiz da fábrica (a contenção de
-escrita do modo projeto bloquearia a nova pasta) e pare.
+Projeto novo se cria de preferência com a sessão na raiz da fábrica. Se a sessão está aberta
+dentro de `<fábrica>/projects/<nome>/`, também funciona (a escrita do `dev` não é contida),
+mas o `CLAUDE.md`/contexto é o do projeto aberto: avise o usuário de que abrir na raiz da
+fábrica é o recomendado e siga se ele quiser continuar.
 
 1. **Levantar requisitos** com a skill `meta-prompt` (CPE, ≤4 rodadas de perguntas). Marque
    com `[ASSUMPTION]` toda decisão tomada sem input do usuário.

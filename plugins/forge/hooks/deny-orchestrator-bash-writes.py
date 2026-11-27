@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse (Bash): barra escrita de código de produto (e, no modo projeto da fábrica, escrita
-fora do projeto) feita por Bash.
+"""PreToolUse (Bash): barra escrita de código de produto do orquestrador feita por Bash.
 
 POR QUE EXISTE: o `deny-orchestrator-code-edits.sh` barra Write|Edit do orquestrador, mas sem
 este hook, depois de uma negação, o orquestrador poderia gravar o MESMO conteúdo por
@@ -8,16 +7,16 @@ este hook, depois de uma negação, o orquestrador poderia gravar o MESMO conte�
 
 MESMO CRITÉRIO DE SESSÃO do hook de Write|Edit: payload com `agent_id` => subagente
 (dev/tester), que escreve livremente => este hook fica calado. Sem `agent_id` => orquestrador
-(a raiz de `claude --agent X` traz `agent_type` sem `agent_id`, e continua contida).
-A única exceção é o modo "projeto da fábrica", onde o subagente também é contido (abaixo).
+(a raiz de `claude --agent X` traz `agent_type` sem `agent_id`, e continua barrada).
+Vale em todos os modos, inclusive "projeto da fábrica".
 
 MESMA REGRA DE CAMINHO: a decisão vem de `lib/decisao_escrita.avalia_escrita` (a mesma função
 do hook de Write|Edit), com a raiz da sessão tirada do payload do mesmo jeito. TRÊS MODOS:
   - fábrica e repo atual: caminho fora da raiz é livre (scratchpad, /tmp), o orquestrador segue
     a allowlist do modo e o subagente escreve livremente;
-  - projeto da fábrica (sessão aberta em `<fábrica>/projects/<nome>`): contenção no projeto.
-    Fora dele, orquestrador E subagente só escrevem em /tmp, $TMPDIR e ~/.claude*; dentro, o
-    orquestrador segue a allowlist do repo atual e o subagente escreve livremente.
+  - projeto da fábrica (sessão aberta em `<fábrica>/projects/<nome>`): dentro do projeto o
+    orquestrador segue a allowlist do repo atual; fora dele só escreve o que não é código
+    (*.md, prompt.md, pastas `.forge/`, artefatos), /tmp, $TMPDIR e ~/.claude*. Sem contenção.
 Caminho relativo é resolvido contra o cwd efetivo (o do payload, ajustado por `cd x &&`
 anteriores). A única exceção própria daqui são os nós `/dev/*` (`> /dev/null`).
 
@@ -46,9 +45,7 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
 
-from decisao_escrita import (  # noqa: E402
-    MOTIVO_CONTENCAO, avalia_escrita, mensagem_contencao, raiz_do_payload,
-)
+from decisao_escrita import avalia_escrita, raiz_do_payload  # noqa: E402
 from shell_tokens import (  # noqa: E402
     eh_redirecao, novo_cwd_do_cd, resolve, segmentos, sem_prefixos, tokeniza,
 )
@@ -181,8 +178,6 @@ def primeiro_alvo_barrado(comando, root, cwd, subagente=False):
 
 
 def _mensagem(alvo, decisao):
-    if decisao.motivo == MOTIVO_CONTENCAO:
-        return mensagem_contencao(decisao, alvo, via_bash=True)
     modo, permitido = decisao.modo, decisao.permitido_desc
     return (
         f"Escrita de código pelo orquestrador é proibida também via Bash (redirecionamento, tee, "

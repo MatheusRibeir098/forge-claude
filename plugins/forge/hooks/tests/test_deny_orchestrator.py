@@ -137,7 +137,7 @@ def _f():
             shutil.rmtree(d)
 
 
-@caso("(f2) raiz com agent_type e SEM agent_id (claude --agent) continua contida")
+@caso("(f2) raiz com agent_type e SEM agent_id (claude --agent) continua barrada")
 def _f2():
     for mk in (fabrica, repo):
         d = mk()
@@ -244,15 +244,21 @@ def _p1():
     mundo(corpo)
 
 
-@caso("(p2) projeto da fábrica, orquestrador: fora do projeto negado, inclusive .md/.txt")
+@caso("(p2) projeto da fábrica, orquestrador: fora do projeto, código negado e o que não é código liberado")
 def _p2():
     def corpo(d, home, env):
         x = os.path.join(d, "projects", "x")
-        for f in ("../y/README.md", "../y/src/a.ts", "../y/.forge/progress.md", "../y/saida.txt",
-                  "../../CLAUDE.md", "../../templates/x.md", "../../plugins/a.py"):
-            ok(roda(x, f, env=env), f"deveria negar {f} (fora de projects/x)")
-        for f in (os.path.join(home, ".cache", "algo", "a.md"), os.path.join(home, "x.md")):
-            ok(roda(x, f, env=env), f"deveria negar {f} (HOME fora de ~/.claude*)")
+        for f in ("../y/src/a.ts", "../y/requirements.txt", "../y/.forgery/a.ts",
+                  "../../plugins/a.py", "../../templates/x.py"):
+            ok(roda(x, f, env=env), f"deveria negar código {f} (fora de projects/x)")
+        ok(roda(x, os.path.join(home, ".cache", "algo", "a.ts"), env=env),
+           "código no HOME fora de ~/.claude* é negado")
+        for f in ("../y/README.md", "../y/notas.markdown", "../y/prompt.md",
+                  "../y/.forge/progress.md", "../y/.forge/estado.json", "../y/saida.txt",
+                  "../y/build.log", "../../CLAUDE.md", "../../templates/x.md"):
+            ok(not roda(x, f, env=env), f"deveria liberar {f} (não é código)")
+        ok(not roda(x, os.path.join(home, ".cache", "algo", "a.md"), env=env),
+           "markdown no HOME é liberado")
     mundo(corpo)
 
 
@@ -267,8 +273,8 @@ def _p3():
                         home, ".claude/projects/-x/memory/a.md"),
                         os.path.join(home, ".claude-empresa/plans/p.md")):
                     ok(not roda(x, f, agent_type=ag, env=env), f"deveria liberar {f} ({ag})")
-                ok(roda(x, os.path.join(tmpdir, "a.ts"), agent_type=ag, env=env),
-                   f"sem TMPDIR definido, {tmpdir} está fora ({ag})")
+                sem_tmpdir = roda(x, os.path.join(tmpdir, "a.ts"), agent_type=ag, env=env)
+                ok(sem_tmpdir == (ag is None), f"sem TMPDIR, {tmpdir}: só o orquestrador nega ({ag})")
                 ok(not roda(x, os.path.join(tmpdir, "a.ts"), agent_type=ag,
                             env={**env, "TMPDIR": tmpdir}), f"com TMPDIR, {tmpdir} é livre ({ag})")
         finally:
@@ -276,32 +282,32 @@ def _p3():
     mundo(corpo)
 
 
-@caso("(p4) projeto da fábrica, subagente: livre no projeto, negado fora")
+@caso("(p4) projeto da fábrica, subagente: livre em qualquer lugar")
 def _p4():
     def corpo(d, home, env):
         x = os.path.join(d, "projects", "x")
         for ag in ("dev", "tester"):
-            ok(not roda(x, "src/a.ts", agent_type=ag, env=env), f"{ag} escreve no projeto")
-            ok(roda(x, "../y/src/a.ts", agent_type=ag, env=env), f"{ag} não escreve em y")
-            ok(roda(x, "../y/README.md", agent_type=ag, env=env), f"{ag} não escreve .md de y")
-            ok(roda(x, "../../CLAUDE.md", agent_type=ag, env=env), f"{ag} não escreve na fábrica")
+            for f in ("src/a.ts", "../y/src/a.ts", "../y/README.md", "../../CLAUDE.md",
+                      "../../plugins/a.py", "../../projects/novo/package.json"):
+                ok(not roda(x, f, agent_type=ag, env=env), f"{ag} escreve {f}")
     mundo(corpo)
 
 
-@caso("(p5) sessão numa subpasta do projeto: contenção pela raiz do projeto")
+@caso("(p5) sessão numa subpasta do projeto: a raiz do projeto é P")
 def _p5():
     def corpo(d, home, env):
         sub = os.path.join(d, "projects", "x", "sub")
         ok(roda(sub, "../src/a.ts", env=env), "orquestrador: código no projeto segue negado")
         ok(not roda(sub, "../.forge/progress.md", env=env), ".forge na raiz de x é liberado")
         ok(not roda(sub, "notas.md", env=env), "markdown na subpasta é liberado")
-        ok(roda(sub, "../../y/README.md", env=env), "y está fora do projeto")
+        ok(roda(sub, "../../y/a.ts", env=env), "código em y (fora de x) é negado")
+        ok(not roda(sub, "../../y/README.md", env=env), "markdown em y é liberado")
         ok(not roda(sub, "../src/a.ts", agent_type="dev", env=env), "dev escreve em x")
-        ok(roda(sub, "../../y/a.ts", agent_type="dev", env=env), "dev não escreve em y")
+        ok(not roda(sub, "../../y/a.ts", agent_type="dev", env=env), "dev escreve em y")
     mundo(corpo)
 
 
-@caso("(p6) `..` e symlink que saem do projeto são negados")
+@caso("(p6) `..` e symlink que saem do projeto seguem a regra de fora do projeto")
 def _p6():
     def corpo(d, home, env):
         x = os.path.join(d, "projects", "x")
@@ -309,10 +315,15 @@ def _p6():
         os.symlink(y, os.path.join(x, "atalho"))
         os.symlink("/tmp", os.path.join(x, "para-tmp"))
         for ag in (None, "dev"):
-            ok(roda(x, os.path.join(x, "src", "..", "..", "y", "README.md"), agent_type=ag,
-                    env=env), f"`..` que sai de x deve negar ({ag})")
-            ok(roda(x, "atalho/README.md", agent_type=ag, env=env),
-               f"symlink para y deve negar ({ag})")
+            nega_codigo = ag is None
+            ok(roda(x, os.path.join(x, "src", "..", "..", "y", "a.ts"), agent_type=ag,
+                    env=env) == nega_codigo, f"`..` que sai de x, código ({ag})")
+            ok(not roda(x, os.path.join(x, "src", "..", "..", "y", "README.md"), agent_type=ag,
+                        env=env), f"`..` que sai de x, markdown ({ag})")
+            ok(roda(x, "atalho/a.ts", agent_type=ag, env=env) == nega_codigo,
+               f"symlink para y, código ({ag})")
+            ok(not roda(x, "atalho/README.md", agent_type=ag, env=env),
+               f"symlink para y, markdown ({ag})")
             ok(not roda(x, "para-tmp/a.ts", agent_type=ag, env=env),
                f"symlink para /tmp cai na exceção do /tmp ({ag})")
     mundo(corpo)
@@ -322,29 +333,26 @@ def _p6():
 def _p7():
     def corpo(d, home, env):
         x = os.path.join(d, "projects", "x")
-        ok(roda(x, "../y/README.md", env=env), "y continua fora do projeto")
-        ok(roda(x, "../../CLAUDE.md", agent_type="dev", env=env), "fábrica não é /tmp livre")
+        ok(roda(x, "../y/src/a.ts", env=env), "código em y (na fábrica) segue negado")
+        ok(roda(x, "../../plugins/a.py", env=env), "código na fábrica não é /tmp livre")
+        ok(not roda(x, "../../plugins/a.py", agent_type="dev", env=env), "dev escreve na fábrica")
         ok(not roda(x, "/tmp/forge-teste-livre/a.ts", env=env), "o resto de /tmp segue livre")
     mundo(corpo, base=None)
 
 
-@caso("(p8) mensagem da contenção cita projeto, caminho e a fábrica; código cita o dev")
+@caso("(p8) código fora do projeto: mensagem manda delegar ao dev, sem texto de contenção")
 def _p8():
     def corpo(d, home, env):
         x = os.path.join(d, "projects", "x")
-        payload = {"tool_name": "Write", "cwd": x,
-                   "tool_input": {"file_path": os.path.join(d, "projects", "y", "README.md")}}
-        r = subprocess.run(["bash", HOOK], input=json.dumps(payload), capture_output=True,
-                           text=True, env={**os.environ, **env})
-        razao = json.loads(r.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
-        for trecho in ("fora da pasta do projeto", "'x'", os.path.realpath(x), "/tmp",
-                       "~/.claude*", os.path.realpath(d), "raiz da fábrica"):
-            ok(trecho in razao, f"faltou {trecho!r} em: {razao}")
-        payload["tool_input"]["file_path"] = os.path.join(x, "src", "a.ts")
-        r = subprocess.run(["bash", HOOK], input=json.dumps(payload), capture_output=True,
-                           text=True, env={**os.environ, **env})
-        razao = json.loads(r.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
-        ok("subagente dev" in razao and "projeto da fábrica" in razao, razao)
+        payload = {"tool_name": "Write", "cwd": x, "tool_input": {}}
+        for alvo in (os.path.join(d, "projects", "y", "src", "a.ts"),
+                     os.path.join(x, "src", "a.ts")):
+            payload["tool_input"]["file_path"] = alvo
+            r = subprocess.run(["bash", HOOK], input=json.dumps(payload), capture_output=True,
+                               text=True, env={**os.environ, **env})
+            razao = json.loads(r.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+            ok("subagente dev" in razao and "projeto da fábrica" in razao, razao)
+            ok("fora da pasta do projeto" not in razao and "raiz da fábrica" not in razao, razao)
     mundo(corpo)
 
 

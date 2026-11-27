@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # PreToolUse (Write|Edit|NotebookEdit): impõe o invariante "o Forge/orquestrador não escreve
-# código de produto". Subagentes (dev/tester) escrevem livremente, exceto no modo "projeto da
-# fábrica" (abaixo), onde só a contenção os alcança.
+# código de produto". Subagentes (dev/tester) escrevem livremente, em qualquer modo.
 #
 # Distinção medida na CLI 2.1.331: o payload do PreToolUse traz "agent_id" (e "agent_type")
 # QUANDO a chamada vem de um subagente, em qualquer profundidade; a sessão-raiz não traz nenhum
 # dos dois. Com `claude --agent X` a raiz traz "agent_type" SEM "agent_id" — por isso o critério
 # é "agent_id": sem ele é o orquestrador (raiz) => aplicar a allowlist de caminhos.
 #
-# A decisão de caminho (modos, allowlist, exceção do /forge:setup, contenção) vive em
+# A decisão de caminho (modos, allowlist, exceção do /forge:setup) vive em
 # lib/decisao_escrita.py e é COMPARTILHADA com deny-orchestrator-bash-writes.py (escrita via
 # Bash), para que as duas regras nunca divirjam. Resumo dos TRÊS modos, detectados pela raiz da
 # sessão (cwd do payload, senão CLAUDE_PROJECT_DIR):
@@ -18,9 +17,10 @@
 #                 lugar do repo.
 #   projeto da fábrica
 #               — a raiz (ou um ancestral, P) está em `<fábrica>/projects/<nome>`: sessão aberta
-#                 direto no projeto. Contenção em P. Orquestrador: dentro de P, a allowlist do
-#                 "repo atual" com P como raiz; fora de P, NEGADO (qualquer extensão), salvo /tmp,
-#                 $TMPDIR e ~/.claude*. Subagente: livre dentro de P; fora de P, mesma regra.
+#                 direto no projeto. Orquestrador: dentro de P, a allowlist do "repo atual" com P
+#                 como raiz; fora de P, só o que não é código (*.md/*.markdown, prompt.md, pastas
+#                 `.forge/`, artefatos *.log/*.patch/*.diff/*.out/*.txt) e /tmp, $TMPDIR e
+#                 ~/.claude*. Código fora de P continua negado; não há contenção.
 #   repo atual  — qualquer outro caso, ou seja, o Forge (como plugin) rodando dentro do
 #                 repositório de trabalho de alguém. O orquestrador só pode escrever em
 #                 `.forge/**` NA RAIZ do repo, em `*.md`/`*.markdown` e em `prompt.md`.
@@ -40,15 +40,14 @@ import json, os, sys
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.environ["FORGE_HOOK_LIB"])
-from decisao_escrita import (MOTIVO_CONTENCAO, avalia_escrita, mensagem_contencao,
-                              raiz_do_payload)
+from decisao_escrita import avalia_escrita, raiz_do_payload
 
 try:
     d = json.loads(os.environ.get("FORGE_HOOK_PAYLOAD", ""))
 except Exception:
     sys.exit(0)  # payload ilegível: não bloqueia
 
-# Subagente (dev/tester): livre, exceto na contenção do modo projeto da fábrica.
+# Subagente (dev/tester): livre (avalia_escrita já o libera).
 # NotebookEdit traz o alvo em notebook_path; Write/Edit, em file_path.
 tool_input = d.get("tool_input") or {}
 file_path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
@@ -56,14 +55,11 @@ decisao = avalia_escrita(file_path, raiz_do_payload(d), subagente=bool(d.get("ag
 if decisao.liberado:
     sys.exit(0)
 
-if decisao.motivo == MOTIVO_CONTENCAO:
-    reason = mensagem_contencao(decisao, file_path)
-else:
-    reason = (
-        f"O Forge (orquestrador) não escreve código de produto. Modo detectado: {decisao.modo}. "
-        f"Permitido neste modo: {decisao.permitido_desc}. Monte um briefing e invoque o subagente "
-        "dev via ferramenta Agent."
-    )
+reason = (
+    f"O Forge (orquestrador) não escreve código de produto. Modo detectado: {decisao.modo}. "
+    f"Permitido neste modo: {decisao.permitido_desc}. Monte um briefing e invoque o subagente "
+    "dev via ferramenta Agent."
+)
 print(json.dumps({"hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",

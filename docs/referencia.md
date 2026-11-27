@@ -42,7 +42,7 @@ não traz o contrato. Os vereditos:
 - `FALHOU` e `BLOQUEADO` mantêm a pendência e reabrem a cobrança (`BLOQUEADO` não é aprovação).
 
 **A raiz é quem não tem `agent_id`.** O payload de subagente traz `agent_id`; o da sessão
-principal não. Os hooks usam essa ausência para reconhecer a raiz (contenção de escrita,
+principal não. Os hooks usam essa ausência para reconhecer a raiz (barreira de escrita de código,
 `volta-pasta-base`, `rtk-root`, `Stop` e o contador de turnos, que ignora a raiz).
 
 ### Comandos
@@ -96,13 +96,15 @@ A detecção é automática, em três modos:
 - **fábrica:** a raiz tem `projects/` **e** `templates/prompt.template.md`;
 - **projeto da fábrica:** a sessão está aberta em `<fábrica>/projects/<nome>/` (ou numa subpasta
   dele). O `CLAUDE.md` da fábrica é herdado (o Claude Code lê os das pastas acima) e os hooks
-  valem ali. A escrita fica contida no projeto, para o orquestrador e para os subagentes: fora
-  da pasta do projeto só passam `/tmp`, `$TMPDIR` e as pastas `~/.claude*`. Dentro do projeto
-  valem as mesmas regras do repo atual;
+  valem ali. Não há contenção de escrita: os subagentes escrevem em qualquer lugar (inclusive
+  criando um projeto irmão em `projects/`). O orquestrador segue sem escrever código em lugar
+  nenhum: dentro do projeto valem as regras do repo atual; fora dele só passam o que não é
+  código (`*.md`/`*.markdown`, `prompt.md`, pastas `.forge/`, artefatos `*.log`/`*.patch`/
+  `*.diff`/`*.out`/`*.txt`, exceto `requirements*.txt`), além de `/tmp`, `$TMPDIR` e `~/.claude*`;
 - **repo atual:** qualquer outro caso.
 
-Abra a sessão na raiz da fábrica só para criar projeto novo, para trabalho que cruza projetos e
-para a manutenção do próprio Forge.
+A sessão por projeto é para foco e contexto. Abra a sessão na raiz da fábrica para criar projeto
+novo, para trabalho que cruza projetos e para a manutenção do próprio Forge.
 
 ### Hooks
 
@@ -111,13 +113,13 @@ Definidos em `plugins/forge/hooks/hooks.json`. Os scripts `.sh` são chamados vi
 
 | Hook | Evento | O que faz |
 |---|---|---|
-| `deny-orchestrator-code-edits.sh` | PreToolUse `Write\|Edit\|NotebookEdit` | Bloqueia o orquestrador de escrever código de produto; subagentes escrevem livremente. No modo projeto da fábrica, contém a escrita no projeto (orquestrador e subagentes) |
+| `deny-orchestrator-code-edits.sh` | PreToolUse `Write\|Edit\|NotebookEdit` | Bloqueia o orquestrador de escrever código de produto; subagentes escrevem livremente, em qualquer modo |
 | `subagent-turn-budget.sh` | PreToolUse e PostToolUse em `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, `WebSearch`, `WebFetch` e `mcp__*` | Conta as chamadas de ferramenta de cada subagente (as `mcp__*` contam para `dev`, `tester` e `scout`), avisa e depois nega no teto do papel; nega ao `dev` subir servidor de aplicação (servidores web conhecidos, `pnpm`/`npm dev`, `start`, `preview`, `serve`, e scripts `app`/`server`/`index`/`main` em Python e Node), browser, screenshot ou `curl` local; delega Bash de leitura ao `rtk` quando ele existe. Ignora a raiz |
 | `volta-pasta-base.py` | PreToolUse `Bash` | Na sessão principal (sem `agent_id`), se a cwd do shell divergir de `CLAUDE_PROJECT_DIR`, reescreve o comando com `cd "<raiz>" &&` e avisa |
 | `rtk-root.sh` | PreToolUse `Bash` | Na sessão principal, encadeia o `rtk` (opcional); é o único escritor de `updatedInput` quando a cwd está na raiz. É o único que delega o Bash da raiz ao `rtk`: o `subagent-turn-budget.sh` só delega o dos subagentes |
 | `require-tester.py` | `SubagentStop`, `Stop` e PostToolUse `Agent` | `SubagentStop`: anota a entrega do `dev` (o modo vem do retorno estruturado) e aplica o veredito do `tester`, em qualquer profundidade. `Stop` da raiz: bloqueia uma vez o fim do turno com entrega sem `tester`. `PostToolUse(Agent)`: marca o `tester` lançado (`async_launched`) e cobre CLIs de término síncrono |
 | `delega-varredura.py` | PostToolUse | Conta leituras consecutivas do orquestrador (inclusive chamadas MCP) e, a partir de 8 (`FORGE_LEITURA_LIMIAR`), lembra de delegar ao `scout` |
-| `deny-orchestrator-bash-writes.py` | PreToolUse `Bash` | Barra a escrita de código pela sessão principal via Bash (e, no modo projeto da fábrica, a escrita fora do projeto), com as mesmas regras de caminho do `Write\|Edit\|NotebookEdit` |
+| `deny-orchestrator-bash-writes.py` | PreToolUse `Bash` | Barra a escrita de código pela sessão principal via Bash, com as mesmas regras de caminho do `Write\|Edit\|NotebookEdit` |
 | `git-identidade-local.py` | PreToolUse `Bash` | Nega `git commit` em repo sem `user.email` local |
 
 ### Invariantes

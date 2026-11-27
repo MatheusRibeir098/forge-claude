@@ -176,8 +176,9 @@ repositório X" feito de dentro da fábrica pode terminar em `~/`.
 
 O item 8 existe porque a sessão pode ser aberta direto em `projects/<nome>/`: o Claude Code lê os
 `CLAUDE.md` das pastas acima, então este bloco é herdado, e os hooks do plugin valem em
-qualquer pasta. Ali eles passam a conter a escrita no projeto (modo "projeto da fábrica"); o
-item diz isso ao agente e lembra quando abrir na raiz da fábrica.
+qualquer pasta. Ali não há contenção de escrita (modo "projeto da fábrica"): subagentes escrevem
+onde precisarem e o orquestrador segue sem escrever código em lugar nenhum; o item diz isso ao
+agente e lembra quando abrir na raiz da fábrica.
 
 ```markdown
 7. **Esta pasta é a fábrica do Forge.** Todo projeto vive em `projects/<nome>/`, com git
@@ -185,7 +186,7 @@ item diz isso ao agente e lembra quando abrir na raiz da fábrica.
    (`git clone <url> projects/<nome>`). Nunca clone nem crie projeto na raiz, no diretório
    pessoal, ou em qualquer lugar fora de `projects/`. O controle de cada projeto fica em
    `projects/<nome>/.forge/`. Isso vale mesmo sem ter rodado `/forge:forge`.
-8. **Sessão por projeto.** Para trabalhar num projeto existente, abra a sessão em `projects/<nome>/`: este `CLAUDE.md` é herdado (o Claude Code lê os `CLAUDE.md` das pastas acima), os hooks do plugin valem em qualquer pasta e, ali, bloqueiam escrita fora do projeto (liberados só `/tmp` e `~/.claude*`). Abra na raiz da fábrica só para criar projeto novo, para trabalho que cruza projetos e para a manutenção do próprio Forge.
+8. **Sessão por projeto.** Para trabalhar num projeto existente, abra a sessão em `projects/<nome>/`: este `CLAUDE.md` é herdado (o Claude Code lê os `CLAUDE.md` das pastas acima), os hooks do plugin valem em qualquer pasta e não bloqueiam escrita fora do projeto (o orquestrador segue sem escrever código em lugar nenhum; quem escreve é o `dev`). A sessão por projeto é para foco e contexto; abra na raiz da fábrica para criar projeto novo, para trabalho que cruza projetos e para a manutenção do próprio Forge.
 ```
 
 ### Algoritmo de merge para `CLAUDE.md`
@@ -353,7 +354,7 @@ usuário quer começar projetos novos em vez de só preparar o repositório onde
 
 Um fluxo de referência é: uma única pasta base, cada repositório em
 que ele trabalha clonado para dentro dela (`projects/app-web`, `projects/api-pagamentos`, …), e um
-orquestrador na raiz da base para criar projetos e para o trabalho que cruza projetos (ou uma sessão por projeto, aberta em `projects/<nome>/`, onde a escrita fica contida no projeto). Projeto
+orquestrador na raiz da base para criar projetos e para o trabalho que cruza projetos (ou uma sessão por projeto, aberta em `projects/<nome>/`, para foco e contexto). Projeto
 novo nasce em `projects/<nome>/`, cada um com o **próprio git**; a base em si nunca é
 repositório e nunca versiona `projects/`.
 

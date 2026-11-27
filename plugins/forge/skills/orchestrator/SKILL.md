@@ -61,7 +61,7 @@ como resultado da chamada. Não declare uma tarefa pronta antes da notificação
 Não delegue o loop `dev`→`tester` a um `general-purpose` que crie os subagentes por você. Ele
 pode aninhar até 3 níveis, mas isso põe uma decisão do modelo numa camada extra, reenvia o
 contexto dele a cada turno e os hooks não têm campo de pai para saber de quem é cada chamada
-(a guarda do `tester` e a contenção de escrita ficam cegas ao encadeamento). Os agentes do
+(a guarda do `tester` e a barreira de escrita de código ficam cegas ao encadeamento). Os agentes do
 Forge nem aninham: `dev` e `scout` não têm `Agent`, e o `tester` o desabilita. Quem orquestra é
 você ou o Workflow.
 

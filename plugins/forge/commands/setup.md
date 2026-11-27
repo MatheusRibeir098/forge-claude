@@ -198,6 +198,7 @@ Depois, feche com um bloco curto de "como usar a partir de agora" — não deixe
 
 Diga onde rodar: na raiz da fábrica (se foi criada) ou do repositório preparado. Se a fábrica
 foi criada, reforce em uma linha: para trabalhar num projeto existente, abra a sessão em
-`projects/<nome>/` — o `CLAUDE.md` da fábrica é herdado e os hooks do Forge bloqueiam escrita
-fora daquele projeto (liberados só `/tmp` e `~/.claude*`); abra na raiz da fábrica só para criar
-projeto novo, para trabalho que cruza projetos e para a manutenção do próprio Forge.
+`projects/<nome>/` — o `CLAUDE.md` da fábrica é herdado e os hooks do Forge não bloqueiam
+escrita fora do projeto (o orquestrador segue sem escrever código; quem escreve é o `dev`);
+abra na raiz da fábrica para criar projeto novo, para trabalho que cruza projetos e para a
+manutenção do próprio Forge.
