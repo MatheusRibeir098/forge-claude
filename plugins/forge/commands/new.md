@@ -12,6 +12,6 @@ ao projeto aberto), mas avise o usuário de que abrir na raiz é o recomendado.
 
 Siga o procedimento do comando `/forge`, Fluxo 1: skill `meta-prompt` (CPE) → gerar
 `projects/<nome>/prompt.md` (confirmar com o usuário) → scaffolding + deps + `git init` →
-montar `.forge/tasks.md` → entrar no loop de execução (seção "Loop de execução" do `/forge`: Workflow
-`forge:executar-lote`, com fallback manual; skill `orchestrator`). Respeite os invariantes do
+montar `.forge/tasks.md` → entrar no loop de execução (seção "Loop de execução" do `/forge`: plano de
+largura, Workflow `forge:executar-lote`, com fallback manual; skill `orchestrator`). Respeite os invariantes do
 `CLAUDE.md` (você não escreve código de produto; commits PT-BR).

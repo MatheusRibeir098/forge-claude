@@ -42,6 +42,10 @@ não disputam o mesmo contador. Nunca escreve dentro do repositório de quem ins
 plugin. Mesma higiene do outro hook: ao tocar o diretório de estado, apaga arquivo com mais
 de 1 dia — contador de sessão encerrada não interessa.
 
+FLAG `pediu_agentes` (gravada pelo `largura-despacho.py` no UserPromptSubmit)
+Quando o usuário pediu agentes/scouts no prompt atual, o limiar cai de 8 para 3: o orquestrador
+não deve ler sozinho antes de despachar. `FORGE_LEITURA_LIMIAR` menor que 3 continua valendo.
+
 ESTE HOOK NUNCA BLOQUEIA. Só injeta `additionalContext` — jamais `permissionDecision`.
 Payload ilegível, sem `tool_name`, ou qualquer erro inesperado: `exit 0` calado. Um hook de
 lembrete não pode ser o motivo de uma tarefa travar.
@@ -62,6 +66,8 @@ FERRAMENTAS_DE_LEITURA = frozenset({
 RE_SESSAO_INVALIDA = re.compile(r"[^A-Za-z0-9_-]")
 
 NOME_ARQUIVO_CONTADOR = "consecutivas"
+NOME_ARQUIVO_FLAG_AGENTES = "pediu_agentes"  # gravada pelo largura-despacho.py
+LIMIAR_COM_PEDIDO_DE_AGENTES = 3
 NOME_ARQUIVO_MCP = "consecutivas_mcp"  # 1 se a corrida atual já teve alguma chamada MCP
 PREFIXO_MCP = "mcp__"
 
@@ -168,6 +174,8 @@ def main() -> int:
         return 0
 
     limiar = _env_int("FORGE_LEITURA_LIMIAR", 8)
+    if (estado / NOME_ARQUIVO_FLAG_AGENTES).is_file():
+        limiar = min(limiar, LIMIAR_COM_PEDIDO_DE_AGENTES)
     n = _ler_contador(contador) + 1
     if tool_name.startswith(PREFIXO_MCP):
         _gravar_contador(flag_mcp, 1)

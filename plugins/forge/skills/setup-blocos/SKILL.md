@@ -153,8 +153,9 @@ arquivo do usuário.
 4. **Segurança de processos e do sistema**: confira processos ativos antes de matar/reiniciar;
    pesquise tecnologia nova incluindo o ano atual na busca; pergunte o perfil git se o usuário
    não especificou. Skills `safe-operations`, `search-before-code`, `git-profiles`.
-5. **Paralelize por padrão**: antes de invocar qualquer subagente, pergunte "o que mais pode
-   rodar junto?" e dispare tudo na mesma mensagem — chamadas separadas viram fila.
+5. **Paralelize por padrão e planeje a largura**: antes de despachar subagentes, diga quantos
+   cabem por papel (teto 12 simultâneos: scouts 8, devs 6, testers de contrato 6, navegador 1)
+   e dispare todos na mesma mensagem — chamadas separadas viram fila.
 6. **Cada token reenviado é pago de novo**: decomponha tarefas para caber em poucos turnos de
    subagente, nomeie 1–2 skills por briefing, prefira `Read` para arquivo conhecido e
    `command grep -rn`/`find` com filtro e limite para busca. Skill `orchestrator`.

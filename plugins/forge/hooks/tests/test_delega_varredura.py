@@ -233,6 +233,65 @@ def _j():
         ok(ctx is not None and "navegador" not in ctx, f"sem MCP não deveria citar navegador: {ctx!r}")
 
 
+def pede_agentes(tmp_base, session_id="sessao-teste"):
+    """Grava a flag `pediu_agentes` como o `largura-despacho.py` faz no UserPromptSubmit."""
+    pasta = os.path.join(tmp_base, "forge", "leituras", session_id)
+    os.makedirs(pasta, exist_ok=True)
+    with open(os.path.join(pasta, "pediu_agentes"), "w", encoding="utf-8") as fh:
+        fh.write("1")
+
+
+@caso("(k) com a flag pediu_agentes o aviso dispara na 3ª leitura (e não na 2ª)")
+def _k():
+    with Sandbox() as tmp:
+        pede_agentes(tmp)
+        for i in range(2):
+            _, _, ctx = ler(tmp)
+            ok(ctx is None, f"leitura {i + 1}/2 não deveria injetar: {ctx!r}")
+        _, _, ctx = ler(tmp)
+        ok(ctx is not None, "a 3ª leitura com a flag deveria injetar")
+        ok("3" in ctx and "scout" in ctx, f"lembrete deveria citar o limiar 3: {ctx!r}")
+
+
+@caso("(l) a flag é por sessão: outra sessão sem flag segue no limiar 8")
+def _l():
+    with Sandbox() as tmp:
+        pede_agentes(tmp, session_id="sessao-a")
+        for i in range(7):
+            _, _, ctx = ler(tmp, session_id="sessao-b")
+            ok(ctx is None, f"sessao-b sem flag não deveria injetar na {i + 1}ª: {ctx!r}")
+        _, _, ctx = ler(tmp, session_id="sessao-b")
+        ok(ctx is not None, "sessao-b deveria injetar só na 8ª")
+
+
+@caso("(m) com a flag, Edit ainda zera a corrida e o cooldown exige outras 3 leituras")
+def _m():
+    with Sandbox() as tmp:
+        pede_agentes(tmp)
+        ler(tmp)
+        ler(tmp)
+        roda(payload(tool_name="Edit"), tmp)
+        for i in range(2):
+            _, _, ctx = ler(tmp)
+            ok(ctx is None, f"Edit zerou, leitura {i + 1}/2 não deveria injetar: {ctx!r}")
+        _, _, ctx = ler(tmp)
+        ok(ctx is not None, "3ª leitura pós-Edit deveria injetar")
+        for i in range(2):
+            _, _, ctx = ler(tmp)
+            ok(ctx is None, f"cooldown: leitura {i + 1}/2 não deveria injetar: {ctx!r}")
+        _, _, ctx = ler(tmp)
+        ok(ctx is not None, "outra corrida de 3 deveria injetar de novo")
+
+
+@caso("(n) FORGE_LEITURA_LIMIAR menor que 3 vence a flag")
+def _n():
+    with Sandbox() as tmp:
+        pede_agentes(tmp)
+        ler(tmp, limiar=2)
+        _, _, ctx = ler(tmp, limiar=2)
+        ok(ctx is not None, "limiar 2 explícito deveria disparar na 2ª leitura")
+
+
 def main():
     falhas = 0
     for nome, fn in CASOS:

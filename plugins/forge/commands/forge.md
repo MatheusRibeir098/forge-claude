@@ -60,14 +60,35 @@ fábrica é o recomendado e siga se ele quiser continuar.
    esse é o projeto (não liste `projects/`). Senão, liste `ls projects/`; fuzzy-match pelo
    nome/tema citado e confirme, ou peça o caminho se nada bater.
 2. **Preparar**: `git pull` antes de analisar (skill `safe-operations`). Para entender a
-   estrutura (entry points, package.json, banco), **invoque um `scout`** em vez de abrir os
-   arquivos você mesmo — varredura no seu contexto é reenviada a cada turno. Resuma ao
-   usuário o que ele devolver.
+   estrutura (entry points, package.json, banco), **invoque um `scout` por frente** em vez de
+   abrir os arquivos você mesmo — varredura no seu contexto é reenviada a cada turno. Ler,
+   entender ou analisar um projeto (conhecido ou não): **mínimo 3 scouts, um por frente**, na
+   mesma mensagem (ex.: dados e backend; front e UI; infra, testes e docs); pergunta pontual
+   de uma frente só: 1 scout. Faça antes o **plano de largura** (abaixo). Resuma ao usuário o
+   que eles devolverem.
 3. **Entender o pedido**: transforme o bug/feature em tarefas atômicas em
    `projects/<nome>/.forge/tasks.md`.
 4. **Entrar no loop** (mesmo da seção **Loop de execução** abaixo, via skill `orchestrator`).
 
 ## Loop de execução (Fluxos 1 e 2)
+
+**Plano de largura antes de cada despacho.** Antes de montar o lote (e de qualquer `Agent` ou
+Workflow), escreva na sua mensagem até 3 linhas: (1) o que está **pronto agora**, isto é,
+tarefas ou frentes independentes; (2) o **lote**, com quantos agentes por papel (`scout` N,
+`dev` N, `tester` N, revisor N) e o total; (3) se o lote ficou **abaixo do teto**, por quê
+(dependência real, arquivo em comum, navegador único ou RAM). O padrão é o **máximo útil até o
+teto**, não 1: todas as tarefas com dependências satisfeitas e arquivos disjuntos saem no
+mesmo lote, e um agente sozinho só sai quando a demanda é de uma frente só. Tetos simultâneos
+por lote (skill `orchestrator`, "Planejar a largura"):
+
+| Papel | Teto |
+|---|---|
+| Total | 12 |
+| `scout` | 8 |
+| `dev` | 6, com arquivos disjuntos (acima de 4 devs com build pesado, avise sobre a RAM) |
+| `tester` modo `contrato` | 6, em paralelo |
+| `tester` modo `browser` | 1 por vez (fila); testers de contrato e revisores seguem em paralelo |
+| Revisor (`forge:scout`) | conta no teto de `scout` (8) e no total (12) |
 
 Com o lote pronto no `.forge/tasks.md`, monte o briefing auto-contido de cada tarefa (skill
 `orchestrator`) e **chame o Workflow `forge:executar-lote`** (ferramenta **Workflow**, pelo
@@ -75,9 +96,25 @@ nome), passando em `args`:
 
 ```json
 { "tarefas": [{ "id": "T3", "briefing_dev": "...", "teste": "browser | contrato | nenhum",
-                "briefing_tester": "..." }],
-  "max_tentativas": 3 }
+                "briefing_tester": "...", "revisao": true,
+                "briefing_revisor": "..." }],
+  "max_tentativas": 3, "max_paralelo": 6, "max_total": 12 }
 ```
+
+- `max_total` é o teto **global** de agentes simultâneos do lote: padrão 12, corte 16; conta
+  `dev`, `tester` (contrato e browser) e revisor.
+- `max_paralelo` limita cada papel (`dev`, `tester` de `contrato`, revisor): padrão 6, mínimo
+  1, corte 16; o efetivo é `min(max_paralelo, max_total)`. Baixe só por RAM ou build pesado
+  (acima de 4 `dev` com build pesado, avise o usuário).
+- No plano de largura do `executar-lote`, a linha 2 conta as tarefas e os papéis previstos
+  (`dev` = tarefas; `tester` = tarefas com teste; revisor = tarefas com `revisao: true`); o
+  script corta no `max_total`.
+- `revisao: true` (por tarefa; `briefing_revisor` é opcional) dispara um `forge:scout`
+  **revisor** em paralelo ao `tester`. Use quando a entrega mexe em mais de 3 arquivos ou em
+  regra crítica (segurança, autorização, dinheiro, dados pessoais, migração). O revisor lê o
+  diff contra o aceite e devolve achados com `arquivo:linha` no campo `revisao` do resultado;
+  se o `tester` der FALHOU, os achados seguem junto para o `dev` na correção. O revisor não
+  aprova nem reprova: o veredito é do `tester`.
 
 - O workflow roda, por tarefa, `forge:dev` → `forge:tester` → correção, até o máximo de
   tentativas. Os `dev` do lote rodam em paralelo; os `tester` em modo `browser` entram em fila
@@ -104,7 +141,12 @@ tarefa e aja conforme o caso:
 
 **Fallback.** Se a ferramenta Workflow não existir ou estiver desligada (`disableWorkflows`,
 CLI antiga), faça o loop manual com `Agent`: `dev` → `tester` → avaliação, um `Agent` por
-tarefa do lote na mesma mensagem. Lembre que o `Agent` roda em background e **o retorno chega
+tarefa do lote na mesma mensagem, com o mesmo plano de largura e os mesmos tetos. Quando um
+`dev` volta, o `tester` dele e o próximo lote de devs prontos saem **na mesma mensagem**. A
+**fila de navegador vale aqui também**: um `tester` em modo `browser` por vez (há um Chrome
+só); os de `contrato` (até 6) e os revisores rodam em paralelo enquanto ele trabalha. Para
+tarefa que pede revisor, despache um `forge:scout` que lê o diff contra o aceite, ao lado do
+`tester`. Lembre que o `Agent` roda em background e **o retorno chega
 depois, como notificação**, não como resultado da chamada: não responda ao usuário como se a
 tarefa tivesse terminado antes de receber o retorno. O hook `require-tester` barra o fim do
 turno quando há entrega do `dev` sem `tester`.
@@ -118,15 +160,22 @@ repositório. **Read-only por padrão** — não abre o loop `dev`→`tester`.
 1. **Antes de tocar qualquer conta de nuvem ou ambiente remoto**: confirme conta/perfil/região
    ativos. Vale para os três fluxos, mas o risco é maior aqui — nunca
    assuma o perfil certo.
-2. **Chame o Workflow `forge:investigar`** (ferramenta **Workflow**, pelo nome), passando em
-   `args` a pergunta e as frentes:
+2. **Fatie as frentes e chame o Workflow `forge:investigar`** (ferramenta **Workflow**, pelo
+   nome), passando em `args` a pergunta e as frentes. Fatie por **pasta, camada, fonte ou
+   pergunta**, com **uma frente por scout** e **até 8 frentes** (o teto de `scout`); frentes
+   independentes que se sobrepõem em escopo viram uma só, e uma pergunta que cabe em duas
+   fontes (ex.: logs e banco) vira duas frentes. Ler/entender/analisar um projeto (conhecido
+   ou não): mínimo 3 scouts, um por frente; pergunta pontual de uma frente só: 1 scout. Faça
+   o plano de largura antes.
 
    ```json
    { "pergunta": "...", "frentes": [{ "titulo": "...", "escopo": "..." }] }
    ```
 
-   Ele roda um `scout` por frente, depois um `scout` cético que tenta refutar cada achado
-   (teto de 8 por frente) e uma checagem de completude. Retorna, por frente, `resposta`,
+   Ele roda um `scout` por frente; depois do scout de cada frente, um scout cético confere em
+   lote até 8 achados daquela frente; com até 8 frentes, o workflow escalona scout e cético por
+   frente (o Workflow aceita até 16 agentes simultâneos). Roda ainda uma checagem de
+   completude. Retorna, por frente, `resposta`,
    `achados_confirmados`, `achados_refutados` e `achados_nao_verificados`, mais as `lacunas`
    gerais. Quando a investigação tocar banco ou data lake, cite nos escopos das frentes a skill
    `banco-de-dados-leitura-segura` (consulta somente leitura).
@@ -139,6 +188,7 @@ repositório. **Read-only por padrão** — não abre o loop `dev`→`tester`.
    todos na mesma mensagem (são só-leitura e nunca colidem; o retorno chega por notificação,
    pois o `Agent` roda em background), correlacione os JSONs e monte o mesmo arquivo. Cite a
    skill `banco-de-dados-leitura-segura` no briefing do `scout` que tocar banco ou data lake.
+   Até 8 scouts por lote; se houver mais frentes, o excedente vai no lote seguinte.
 4. **Mostre o relatório ao usuário.** Só entra no loop `dev`→`tester` do Fluxo 2 se, depois de
    lido, ele pedir uma correção — aí vira tarefa normal.
 
@@ -147,13 +197,16 @@ repositório. **Read-only por padrão** — não abre o loop `dev`→`tester`.
 ## Sempre
 
 - O usuário fala só com você — nunca peça para "abrir terminal" ou "falar com o dev".
-- **Paralelize por padrão** (Invariante 5): antes de cada invocação, rode o checkpoint de
-  paralelismo da skill `orchestrator` e dispare na mesma mensagem tudo que for independente.
+- **Paralelize por padrão e planeje a largura** (Invariante 5): antes de cada invocação, faça o
+  plano de largura e rode o checkpoint de paralelismo da skill `orchestrator`, e dispare na
+  mesma mensagem tudo que for independente, até o teto de 12 simultâneos. Se o usuário pediu
+  scouts ou agentes, não leia você mesmo na raiz: despache 3 ou mais antes (além de 1 ou 2
+  arquivos já conhecidos).
   O usuário não deve precisar pedir para você adiantar trabalho com mais um subagente.
 - Reporte progresso de forma resumida (feito / em andamento / falta) e diga o que está
   rodando em paralelo.
 - **Invariante 6 (custo):** o gasto tende a se concentrar em **turnos dentro de subagente**, então
-  decomponha de verdade — tarefa que não cabe em ~35 chamadas de ferramenta volta `PARCIAL` e
+  decomponha de verdade — tarefa que não cabe em 35 chamadas de ferramenta (aviso em 25) volta `PARCIAL` e
   você re-loteia (não re-briefa a tarefa inteira). Nos briefings: nomeie 1–2 skills e mande
   usar `Read` para arquivo conhecido e `command grep -rn`/`find` com filtro e limite para busca. **Invocar o `tester` é obrigatório**
   em tarefa com UI/rota/endpoint — o Workflow `forge:executar-lote` garante isso por código; no

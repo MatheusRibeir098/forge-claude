@@ -58,7 +58,9 @@ que mais importam são **hooks**, scripts que o Claude Code roda antes e depois 
   marca a validação como **pendente** e cobra o `tester` antes de fechar a tarefa;
 - cada papel tem um **teto de turnos**: ao chegar nele, o subagente devolve o que já fez e o
   orquestrador continua de onde parou;
-- um `commit` só sai com identidade git configurada no próprio repositório.
+- um `commit` só sai com identidade git configurada no próprio repositório;
+- antes de despachar subagentes, o orquestrador planeja a **largura** do lote, e um hook
+  cutuca (sem bloquear) quando um agente sai sozinho com outras frentes prontas.
 
 O `/forge:setup` grava o resto das regras no `CLAUDE.md` do seu repositório. Entre elas:
 nada de `git push` ou deploy sem ordem sua, commits em português e tarefas independentes
@@ -108,6 +110,13 @@ volta para o modelo. O Forge ataca isso de três formas:
 - **`scout` descartável:** a varredura acontece no contexto dele, só o resumo volta, e o resto
   é descartado quando ele termina.
 - **Teto de turnos por papel:** nenhuma invocação cresce sem limite.
+- **Largura planejada:** o orquestrador diz quantos subagentes cabem por papel antes de
+  despachar e dispara o lote de uma vez, até o teto de 12 simultâneos (`scout` 8, incluindo o
+  revisor, `dev` 6, `tester` de contrato 6, navegador 1). Ler um projeto pede no mínimo 3
+  `scout`, um por frente. No `forge:executar-lote`, `max_total` (padrão 12, corte 16) é o
+  teto global do lote e `max_paralelo` (padrão 6, corte 16) limita cada papel. Quem lê em
+  volume é o `scout`, em vários ao mesmo tempo, não a sessão principal.
+  Projetos já configurados recebem a invariante 5 nova rodando `/forge:setup` de novo.
 - **Aviso de leitura:** se o orquestrador começa a abrir arquivo atrás de arquivo, um hook
   sugere passar a tarefa ao `scout`.
 

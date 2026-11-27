@@ -1,0 +1,19 @@
+{
+  "session_id": "be455779-fd43-4302-b9da-f024ab3d8ba1",
+  "transcript_path": "__TRANSCRIPT__",
+  "cwd": "/home/user/projeto",
+  "permission_mode": "default",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Agent",
+  "tool_input": {
+    "description": "mapear backend",
+    "prompt": "Briefing de mapear backend",
+    "subagent_type": "forge:scout"
+  },
+  "tool_response": {
+    "isAsync": true,
+    "status": "async_launched"
+  },
+  "tool_use_id": "toolu_01AAA",
+  "duration_ms": 4200
+}

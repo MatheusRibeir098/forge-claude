@@ -33,7 +33,8 @@ veredito do `tester`. Quando o orquestrador tenta encerrar o turno (`Stop`) com 
 `tester` do Forge ainda rodando (lido de `background_tasks` do payload) nem por 2 h depois que um
 `tester` foi lançado pela raiz (a marca some quando ele termina). Cada entrega é cobrada uma só
 vez, e `stop_hook_active` libera sempre, para nunca entrar em laço. O estado da sessão expira
-depois de 24 h sem escrita. Nos workflows, os agentes devolvem o retorno pela ferramenta
+depois de 24 h sem escrita, e guarda até 100 entregas pendentes por sessão (com vários `dev`
+em paralelo, uma memória menor deixava as mais antigas sumirem). Nos workflows, os agentes devolvem o retorno pela ferramenta
 `StructuredOutput`; o hook lê esse retorno do transcript do subagente quando a última mensagem
 não traz o contrato. Os vereditos:
 
@@ -118,7 +119,8 @@ Definidos em `plugins/forge/hooks/hooks.json`. Os scripts `.sh` são chamados vi
 | `volta-pasta-base.py` | PreToolUse `Bash` | Na sessão principal (sem `agent_id`), se a cwd do shell divergir de `CLAUDE_PROJECT_DIR`, reescreve o comando com `cd "<raiz>" &&` e avisa |
 | `rtk-root.sh` | PreToolUse `Bash` | Na sessão principal, encadeia o `rtk` (opcional); é o único escritor de `updatedInput` quando a cwd está na raiz. É o único que delega o Bash da raiz ao `rtk`: o `subagent-turn-budget.sh` só delega o dos subagentes |
 | `require-tester.py` | `SubagentStop`, `Stop` e PostToolUse `Agent` | `SubagentStop`: anota a entrega do `dev` (o modo vem do retorno estruturado) e aplica o veredito do `tester`, em qualquer profundidade. `Stop` da raiz: bloqueia uma vez o fim do turno com entrega sem `tester`. `PostToolUse(Agent)`: marca o `tester` lançado (`async_launched`) e cobre CLIs de término síncrono |
-| `delega-varredura.py` | PostToolUse | Conta leituras consecutivas do orquestrador (inclusive chamadas MCP) e, a partir de 8 (`FORGE_LEITURA_LIMIAR`), lembra de delegar ao `scout` |
+| `delega-varredura.py` | PostToolUse | Conta leituras consecutivas do orquestrador (inclusive chamadas MCP) e, a partir de 8 (`FORGE_LEITURA_LIMIAR`), lembra de delegar ao `scout`. Se o último pedido do usuário citava agentes, scouts ou paralelismo, o limiar cai para 3 |
+| `largura-despacho.py` | PostToolUse `Agent` e `UserPromptSubmit` | Só cutuca, nunca bloqueia. `PostToolUse(Agent)`: na raiz, se a última mensagem do orquestrador despachou **um** agente só (`forge:*`, `general-purpose` ou `Explore`), lembra de conferir se há outras frentes prontas para sair juntas (uma vez por mensagem). `UserPromptSubmit`: se o pedido do usuário cita agentes, scouts, subagentes ou paralelismo, grava uma flag da sessão e orienta a planejar a largura e despachar 3 ou mais scouts antes de ler; sem o pedido, apaga a flag |
 | `deny-orchestrator-bash-writes.py` | PreToolUse `Bash` | Barra a escrita de código pela sessão principal via Bash, com as mesmas regras de caminho do `Write\|Edit\|NotebookEdit` |
 | `git-identidade-local.py` | PreToolUse `Bash` | Nega `git commit` em repo sem `user.email` local |
 
@@ -133,13 +135,51 @@ sobre onde os projetos vivem):
 3. Commits em português do Brasil (prefixos convencionais em inglês são ok).
 4. Segurança de processos: confira processos ativos antes de matar ou reiniciar, pesquise
    tecnologia nova incluindo o ano na busca, pergunte o perfil git se não foi especificado.
-5. Paralelize por padrão: o que for independente vai na mesma mensagem.
+5. Paralelize por padrão e planeje a largura: diga quantos subagentes cabem por papel (teto
+   12 simultâneos) e dispare todos na mesma mensagem.
 6. Cada token reenviado é pago de novo: decomponha em tarefas pequenas, nomeie 1-2 skills por
    briefing, prefira `Read` para arquivo conhecido e `command grep -rn`/`find` com filtro e limite para busca.
 
 O `deny` das permissions é só o mínimo genérico (`git push --force`, `-f`,
 `--force-with-lease`); `git push` comum cai no `ask`. A regra de deploy vive no invariante 2,
 não numa lista de comandos de um provedor.
+
+## Largura de despacho
+
+Antes de todo despacho de subagente (`Agent` ou Workflow), o orquestrador escreve um **plano de
+largura** de até 3 linhas: o que está pronto para sair agora, quantos agentes por papel e o
+total, e, se o lote ficou abaixo do teto com trabalho ainda pronto, o motivo (dependência real,
+arquivo em comum, navegador único ou RAM). O padrão é o máximo útil até o teto, não um agente
+só. O `largura-despacho.py` cutuca quando sai um agente sozinho, mas não bloqueia.
+
+| Papel | Teto simultâneo por lote |
+|---|---|
+| **Total** | **12** |
+| `scout` | 8 (o revisor conta aqui e no total) |
+| `dev` | 6, com arquivos disjuntos (acima de 4 `dev` com build pesado, atenção à RAM da máquina) |
+| `tester` em modo `contrato` | 6, em paralelo |
+| `tester` em modo `browser` | 1 por vez (fila); testers de `contrato` e revisores seguem em paralelo enquanto ele roda |
+
+Os tetos ficam abaixo dos limites técnicos do Claude Code, que nunca podem ser passados: 20
+subagentes simultâneos na ferramenta `Agent` (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`) e 16
+agentes simultâneos num Workflow.
+
+Como fatiar, por papel:
+
+- **`scout`:** um por frente independente (pasta, camada, módulo, fonte externa ou pergunta);
+  para ler, entender ou analisar um projeto (conhecido ou não), no mínimo 3, um por frente;
+  pergunta pontual de uma frente só: 1. Quando o usuário pede agentes ou scouts, o
+  orquestrador despacha 3 ou mais antes de ler por conta própria.
+- **`dev`:** tarefas atômicas (1 a 3 arquivos e um contrato); todas as que têm dependências
+  satisfeitas e arquivos disjuntos saem no mesmo lote; contrato compartilhado vira uma tarefa
+  anterior curta. Quando um `dev` volta, o `tester` dele e o próximo lote de `dev` saem na
+  mesma mensagem.
+- **`tester`:** um por entrega que precisa de teste; os de `contrato` em paralelo, o `browser`
+  em fila.
+- **Revisor:** um `forge:scout` que lê o diff contra o aceite e devolve achados com
+  `arquivo:linha`, em paralelo ao `tester`, quando a entrega mexe em mais de 3 arquivos ou em
+  regra crítica (segurança, autorização, dinheiro, dados pessoais, migração). Ele não aprova
+  nem reprova: o veredito é do `tester`, e achado confirmado vira correção do `dev`.
 
 ## Economia de token
 
@@ -158,7 +198,7 @@ não achou nenhum. O orquestrador re-loteia sem perder o que já foi feito; não
 
 | Papel | Aviso | Teto | Variáveis de ambiente |
 |---|---|---|---|
-| `dev` | 25 | 35 (≈60 turnos) | `FORGE_TURN_WARN` / `FORGE_TURN_CAP` |
+| `dev` | 25 | 35 chamadas de ferramenta (aviso em 25) | `FORGE_TURN_WARN` / `FORGE_TURN_CAP` |
 | `tester` | 180 | 250 | `FORGE_TESTER_WARN` / `FORGE_TESTER_CAP` |
 | `scout` | 28 | 40 | `FORGE_SCOUT_WARN` / `FORGE_SCOUT_CAP` |
 | genérico (`general-purpose`, `Explore`, agentes de outros plugins) | 30 | 40 | `FORGE_OUTRO_WARN` / `FORGE_OUTRO_CAP` |
@@ -200,11 +240,24 @@ Roda um lote de tarefas no ciclo `forge:dev` → `forge:tester` → correção.
 - **`args`:** `{ "tarefas": [{ "id", "briefing_dev", "teste": "browser" | "contrato" | "nenhum",
   "briefing_tester" }], "max_tentativas": 3 }`. `briefing_tester` é obrigatório quando `teste`
   não é `nenhum`; `max_tentativas` é opcional (inteiro ≥ 1, padrão 3).
-- **Como roda:** um `dev` por tarefa, em paralelo; `tester` em modo `browser` entram em fila (um
-  Chrome só) e os de `contrato` rodam em paralelo. No `FALHOU`, o `dev` recebe as falhas e a
-  recomendação do `tester` e tenta de novo, até o máximo.
+  Outros args opcionais: `max_total` (padrão 12, corte duro em 16) é o teto global de agentes
+  simultâneos do lote e conta `dev`, `tester` (contrato e navegador) e revisor; `max_paralelo`
+  (padrão 6, mínimo 1, corte duro em 16) limita cada papel (`dev`, `tester` de `contrato` e
+  revisor), e o efetivo é o menor entre `max_paralelo` e `max_total`; e, por tarefa,
+  `revisao: true` (com `briefing_revisor` opcional) dispara um `forge:scout` revisor em
+  paralelo ao `tester`.
+- **Como roda:** um `dev` por tarefa, em paralelo, até `max_paralelo`; o `tester` em modo `browser`
+  entra em fila (um Chrome só) e os de `contrato` rodam em paralelo, também até `max_paralelo`, tudo dentro do `max_total`.
+  No `FALHOU`, o `dev` recebe as falhas e a recomendação do `tester` e tenta de novo, até o
+  máximo. Os `dev` do workflow compartilham a árvore de trabalho: a disjunção de arquivos entre
+  as tarefas é a proteção, não há worktree por `dev`.
+- **Revisor (`revisao: true`):** lê o diff contra o aceite da tarefa e devolve achados com
+  `arquivo:linha`. Os achados entram no resultado da tarefa, em `revisao`, e, se o `tester`
+  der `FALHOU`, vão junto para o `dev` na correção. O revisor não aprova nem reprova (o
+  veredito é do `tester`), e um revisor sem retorno é ignorado sem quebrar a tarefa.
 - **Retorno:** uma lista com, por tarefa, `id`, `status_final` (`PASSOU`, `FALHOU`,
-  `BLOQUEADO`, `PARCIAL` ou `SEM_TESTE`), `tentativas`, `dev`, `tester` e `proximo_briefing`.
+  `BLOQUEADO`, `PARCIAL` ou `SEM_TESTE`), `tentativas`, `dev`, `tester`, `revisao` (quando
+  pedida) e `proximo_briefing`.
 - **Cuidados:** as tarefas de um mesmo lote precisam ter arquivos disjuntos, e o workflow não
   pergunta nada ao usuário no meio.
 
@@ -213,9 +266,11 @@ Roda um lote de tarefas no ciclo `forge:dev` → `forge:tester` → correção.
 Investigação somente leitura com `forge:scout`.
 
 - **`args`:** `{ "pergunta": "...", "frentes": [{ "titulo": "...", "escopo": "..." }] }`.
-- **Como roda:** um `scout` por frente; depois, um `scout` cético por frente confere em lote até
-  8 achados lendo os lugares citados e refuta só o que for falso (achado verdadeiro mas
-  incompleto não é refutado: lacuna é assunto da completude); por fim, um `scout` aponta as
+- **Como roda:** um `scout` por frente; depois do `scout` de cada frente, um `scout` cético confere
+  em lote até 8 achados daquela frente, lendo os lugares citados, e refuta só o que for falso
+  (achado verdadeiro mas incompleto não é refutado: lacuna é assunto da completude); com até
+  8 frentes, o workflow escalona `scout` e cético por frente (o Workflow aceita até 16
+  agentes simultâneos); por fim, um `scout` aponta as
   lacunas.
 - **Retorno:** `{ pergunta, frentes, lacunas }`; cada frente traz `resposta`,
   `achados_confirmados`, `achados_refutados` e `achados_nao_verificados`.
@@ -269,18 +324,19 @@ docs/                               # tutorial, referência, apresentação para
 
 ## Desenvolvimento
 
-Testes dos hooks (biblioteca padrão, um script por hook, 121 casos no total):
+Testes dos hooks (biblioteca padrão, um script por hook, 145 casos no total):
 
 ```bash
 for t in plugins/forge/hooks/tests/test_*.py; do python3 "$t"; done
 ```
 
-Os scripts são `test_delega_varredura.py` (10 casos), `test_deny_bash_writes.py` (15),
-`test_deny_orchestrator.py` (23), `test_identidade_local.py` (8), `test_require_tester.py` (32,
+Os scripts são `test_delega_varredura.py` (14 casos), `test_deny_bash_writes.py` (15),
+`test_deny_orchestrator.py` (23), `test_identidade_local.py` (8), `test_largura_despacho.py`
+(15), `test_require_tester.py` (37,
 construídos a partir de payloads reais de `PostToolUse`, `SubagentStop` e `Stop` capturados na
 CLI), `test_subagent_turn_budget.py` (19) e `test_volta_pasta_base.py` (14).
 
-Os workflows têm 7 cenários, que rodam no `node` (sem rede e sem modelo):
+Os workflows têm 38 cenários, que rodam no `node` (sem rede e sem modelo):
 
 ```bash
 node plugins/forge/workflows/tests/test_workflows.mjs

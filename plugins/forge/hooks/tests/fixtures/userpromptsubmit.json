@@ -1,0 +1,8 @@
+{
+  "session_id": "be455779-fd43-4302-b9da-f024ab3d8ba1",
+  "transcript_path": "/home/user/.claude/projects/-home-user-projeto/be455779-fd43-4302-b9da-f024ab3d8ba1.jsonl",
+  "cwd": "/home/user/projeto",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "__PROMPT__"
+}

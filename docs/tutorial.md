@@ -86,8 +86,8 @@ paralelo. Cada tarefa com interface passa pelo `tester` antes de ser marcada com
 > *"O filtro de data do dashboard está trazendo o mês errado quando o usuário escolhe
 > 'últimos 30 dias'."*
 
-Ele invoca um `scout` para entender a estrutura (em vez de abrir os arquivos no contexto
-dele), transforma em tarefas e entra no mesmo loop.
+Ele invoca um `scout` por frente para entender a estrutura (no mínimo 3 num projeto que ele
+não conhece, em vez de abrir os arquivos no contexto dele), transforma em tarefas e entra no mesmo loop.
 
 ### Fluxo 3 — investigar (não termina em código)
 
@@ -104,6 +104,17 @@ banco.
   subagente.
 - **Ele paraleliza sozinho.** Tarefas independentes vão na mesma mensagem. Se você precisou
   pedir "adianta outra coisa junto", ele falhou nisso.
+- **Ele planeja a largura antes de despachar.** Em até 3 linhas, diz o que está pronto para
+  sair, quantos agentes vão por papel e, se o lote ficou menor que o teto, por quê. Os tetos
+  são 12 simultâneos no total: 8 `scout` (o revisor conta aqui), 6 `dev` (arquivos disjuntos),
+  6 `tester` de contrato e 1 de navegador por vez. Ler, entender ou analisar um projeto pede
+  no mínimo 3 `scout`, um por frente; pergunta pontual de uma frente só usa 1. Se você pedir
+  agentes ou scouts, ele despacha 3 ou mais antes de ler por conta própria. No
+  `forge:executar-lote`, o `max_total` (padrão 12, corte 16) é o teto global de agentes
+  simultâneos e o `max_paralelo` (padrão 6, corte 16) limita cada papel; vale o menor dos dois. Um hook cutuca quando um agente sai sozinho, mas não bloqueia.
+- **Revisor para entrega grande.** Quando a entrega mexe em mais de 3 arquivos ou em regra
+  crítica (segurança, dinheiro, dados pessoais), um `scout` revisor lê o diff em paralelo ao
+  `tester`. O veredito continua sendo do `tester`.
 - **O loop roda por um Workflow.** O Forge entrega o lote de tarefas ao `forge:executar-lote`
   (e a investigação ao `forge:investigar`), que implementa, valida e corrige por código. Na
   primeira vez o Claude Code **pede aprovação**; escolha "Yes, and don't ask again" para não
@@ -143,7 +154,7 @@ cada turno. Três coisas que ajudam de verdade:
    menos que uma que fica 150 turnos tentando.
 2. **Deixe o `scout` varrer.** Uma varredura no `scout` é barata (roda em modelo menor) e é descartada; a
    mesma varredura no contexto principal é recobrada em **todo** turno seguinte. Um hook te
-   lembra disso quando você emenda 8 leituras seguidas.
+   lembra disso quando você emenda 8 leituras seguidas (3, se você pediu agentes).
    Regra prática: **no começo de uma sessão longa, delegue; perto do fim, leia direto.**
 3. **Sessão nova para assunto novo.** Contexto acumulado é o que encarece — e ele não diminui.
 

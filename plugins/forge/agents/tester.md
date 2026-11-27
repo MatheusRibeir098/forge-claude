@@ -61,8 +61,9 @@ caçando: devolva `BLOQUEADO` dizendo exatamente isso e o que destravaria.
 
 ## ⏱️ Orçamento de turnos
 
-Sua invocação tem teto de **65 chamadas de ferramenta** (o hook avisa em 45 e nega a partir de 65; mais folgado que
-o do `dev`, porque você sobe servidor e dirige navegador). O contexto é reenviado a cada
+Sua invocação tem teto de **250 chamadas de ferramenta** (o hook avisa em 180 e nega a partir de 250; bem mais
+folgado que o do `dev`, porque você sobe servidor e dirige navegador, e cada chamada do
+navegador conta). O teto é freio para fuga de controle, não meta. O contexto é reenviado a cada
 turno, então não tente subir o app de dez formas diferentes: se depois de algumas tentativas
 o app não sobe por defeito do código, isso **já é** o veredito — `FALHOU` com `tipo: "build"`
 e o log do erro. Se não sobe por dependência ausente, credencial ou serviço fora, é
@@ -71,7 +72,7 @@ e o log do erro. Se não sobe por dependência ausente, credencial ou serviço f
 Não saia procurando binário pelo disco (`find / -iname ...`). Se a ferramenta não está onde
 deveria, é `BLOQUEADO`, não uma caçada.
 
-Ao receber a mensagem de teto esgotado do hook (ou o aviso em 45), responda só em texto:
+Ao receber a mensagem de teto esgotado do hook (ou o aviso em 180), responda só em texto:
 
 - se já encontrou **algum defeito do produto**, `FALHOU` com as `falhas` encontradas — um defeito
   achado já prova a falha;

@@ -112,7 +112,7 @@ async function cenarioDevParcial() {
   const parcial = devOk({ status: 'PARCIAL', so_falta_validacao: false, proximo_briefing: 'continuar pelo formulário de cadastro' })
   const { retorno, chamadas } = await rodarWorkflow('executar-lote', { tarefas: [tarefa('t2')] }, porRotulo({ 't2 · dev #1': parcial }))
   assert.equal(chamadas.length, 1, 'tester não deve rodar após dev PARCIAL')
-  assert.deepEqual(retorno[0], { id: 't2', status_final: 'PARCIAL', tentativas: 1, dev: parcial, tester: null, falta_do_dev: [], proximo_briefing: 'continuar pelo formulário de cadastro' })
+  assert.deepEqual(retorno[0], { id: 't2', status_final: 'PARCIAL', tentativas: 1, dev: parcial, tester: null, revisao: null, falta_do_dev: [], proximo_briefing: 'continuar pelo formulário de cadastro' })
 }
 
 const PARCIAL_DE_VALIDACAO = { status: 'PARCIAL', so_falta_validacao: true, falta: ['ver a tela de login em desktop e mobile'] }
@@ -228,6 +228,231 @@ async function cenarioTestersBrowserEmFila() {
   assert.deepEqual(retorno.map((resultado) => resultado.status_final), ['PASSOU', 'PASSOU', 'PASSOU', 'PASSOU'])
   assert.equal(medidor.maximo.browser, 1, 'dois testers browser rodaram ao mesmo tempo')
   assert.equal(medidor.maximo.contrato, 2, 'testers contrato deveriam rodar em paralelo')
+}
+
+function medirPicoDeDevs() {
+  const medidor = { ativos: 0, pico: 0 }
+  medidor.responder = async (_prompt, { label }) => {
+    if (!label.includes('dev')) return testerCom('PASSOU', { modo: 'contrato' })
+    medidor.ativos += 1
+    medidor.pico = Math.max(medidor.pico, medidor.ativos)
+    await esperar(DURACAO_DO_TESTER_MS)
+    medidor.ativos -= 1
+    return devOk()
+  }
+  return medidor
+}
+
+function tarefasDeContrato(quantidade) {
+  return Array.from({ length: quantidade }, (_, indice) => tarefa(`d${indice + 1}`, 'contrato'))
+}
+
+async function picoDeDevsCom(quantidade, extra = {}) {
+  const medidor = medirPicoDeDevs()
+  const { retorno, logs } = await rodarWorkflow('executar-lote', { tarefas: tarefasDeContrato(quantidade), ...extra }, medidor.responder)
+  assert.ok(retorno.every((resultado) => resultado.status_final === 'PASSOU'), 'todas as tarefas devem terminar PASSOU')
+  return { pico: medidor.pico, logs }
+}
+
+async function cenarioMaxParaleloLimitaDevs() {
+  const { pico } = await picoDeDevsCom(8, { max_paralelo: 3 })
+  assert.equal(pico, 3, 'pico de devs simultâneos deveria ser max_paralelo')
+}
+
+async function cenarioMaxParaleloPadraoSeis() {
+  const { pico } = await picoDeDevsCom(10)
+  assert.equal(pico, 6, 'sem max_paralelo o padrão é 6')
+}
+
+async function cenarioMaxParaleloCorteEmDezesseis() {
+  const { pico, logs } = await picoDeDevsCom(20, { max_paralelo: 99, max_total: 16 })
+  assert.equal(pico, 16, 'max_paralelo acima de 16 é cortado em 16')
+  assert.ok(logs.some((mensagem) => mensagem.includes('usando 16')), 'log deve avisar do corte')
+}
+
+async function cenarioMaxParaleloMinimoUm() {
+  const { pico } = await picoDeDevsCom(4, { max_paralelo: 0 })
+  assert.equal(pico, 1, 'max_paralelo abaixo de 1 vira 1')
+}
+
+async function cenarioMaxParaleloInvalidoRejeitado() {
+  await assert.rejects(() => rodarWorkflow('executar-lote', { tarefas: [tarefa('t1')], max_paralelo: 'muitos' }, porRotulo({})), /max_paralelo/)
+}
+
+async function cenarioMaxParaleloLimitaTestersDeContrato() {
+  const livre = criarMedidorDeConcorrencia()
+  const { retorno } = await rodarWorkflow('executar-lote', { tarefas: tarefasDeContrato(8), max_paralelo: 8 }, livre.responder)
+  assert.ok(retorno.every((resultado) => resultado.status_final === 'PASSOU'))
+  assert.equal(livre.maximo.contrato, 8, 'sem limite menor, os 8 testers de contrato rodam juntos')
+  const limitado = criarMedidorDeConcorrencia()
+  await rodarWorkflow('executar-lote', { tarefas: tarefasDeContrato(8), max_paralelo: 2 }, limitado.responder)
+  assert.equal(limitado.maximo.contrato, 2, 'testers de contrato respeitam max_paralelo')
+}
+
+// Conta TODOS os agentes em andamento (dev, tester, revisor), qualquer papel.
+function medirPicoGlobal(resposta) {
+  const medidor = { ativos: 0, pico: 0 }
+  medidor.responder = async (prompt, opcoes) => {
+    medidor.ativos += 1
+    medidor.pico = Math.max(medidor.pico, medidor.ativos)
+    await esperar(DURACAO_DO_TESTER_MS)
+    medidor.ativos -= 1
+    return resposta(prompt, opcoes)
+  }
+  return medidor
+}
+
+function respostaDeLotePassando(_prompt, { label }) {
+  if (label.includes('revisor')) return { achados: [] }
+  return label.includes('dev') ? devOk() : testerCom('PASSOU', { modo: 'contrato' })
+}
+
+function tarefasComRevisao(quantidade, teste = 'contrato') {
+  return Array.from({ length: quantidade }, (_, indice) => ({ ...tarefa(`g${indice + 1}`, teste), revisao: true }))
+}
+
+async function picoGlobalCom(tarefas, extra = {}) {
+  const medidor = medirPicoGlobal(respostaDeLotePassando)
+  const { retorno, logs } = await rodarWorkflow('executar-lote', { tarefas, ...extra }, medidor.responder)
+  assert.ok(retorno.every((resultado) => resultado.status_final === 'PASSOU'), 'todas as tarefas devem terminar PASSOU')
+  return { pico: medidor.pico, logs }
+}
+
+async function cenarioMaxTotalPadraoDoze() {
+  const { pico } = await picoGlobalCom(tarefasComRevisao(20))
+  assert.equal(pico, 12, 'sem max_total o teto global é 12 (6 devs + 6 testers + 6 revisores passariam disso)')
+}
+
+async function cenarioMaxTotalLimitaOLoteTodo() {
+  const { pico } = await picoGlobalCom(tarefasComRevisao(20), { max_total: 5, max_paralelo: 4 })
+  assert.equal(pico, 5, 'pico global deveria ser max_total')
+}
+
+async function cenarioMaxTotalCorteEmDezesseis() {
+  const { pico, logs } = await picoGlobalCom(tarefasComRevisao(24), { max_total: 99, max_paralelo: 16 })
+  assert.equal(pico, 16, 'max_total acima de 16 é cortado em 16')
+  assert.ok(logs.some((mensagem) => mensagem.includes('max_total 99') && mensagem.includes('usando 16')))
+}
+
+async function cenarioMaxParaleloAcimaDeMaxTotal() {
+  const { pico, logs } = await picoDeDevsCom(10, { max_paralelo: 10, max_total: 4 })
+  assert.equal(pico, 4, 'max_paralelo vira max_total')
+  assert.ok(logs.some((mensagem) => mensagem.includes('acima de max_total 4, usando 4')))
+}
+
+async function cenarioMaxTotalInclusiveTesterBrowser() {
+  const tarefas = [tarefa('k1'), tarefa('k2'), tarefa('k3', 'contrato'), tarefa('k4', 'contrato')]
+  const { pico } = await picoGlobalCom(tarefas, { max_total: 2 })
+  assert.equal(pico, 2, 'browser e contrato dividem o mesmo teto global')
+}
+
+async function cenarioMaxTotalSemDeadlockNaCorrecao() {
+  const falhaUmaVez = (prompt, { label }) => {
+    if (label.includes('revisor')) return { achados: [ACHADO_DO_REVISOR] }
+    if (label.includes('dev')) return devOk()
+    return label.endsWith('#1') ? testerCom('FALHOU', { falhas: [FALHA_DO_LOGIN], recomendacao_para_dev: 'corrigir' }) : testerCom('PASSOU')
+  }
+  for (const maxTotal of [1, 2]) {
+    const medidor = medirPicoGlobal(falhaUmaVez)
+    const lote = tarefasComRevisao(5, 'browser').concat(tarefasComRevisao(5).map((item) => ({ ...item, id: `c${item.id}` })))
+    const { retorno } = await rodarWorkflow('executar-lote', { tarefas: lote, max_total: maxTotal }, medidor.responder)
+    assert.ok(retorno.every((resultado) => resultado.status_final === 'PASSOU' && resultado.tentativas === 2), `max_total ${maxTotal}: FALHOU → correção deve concluir`)
+    assert.ok(medidor.pico <= maxTotal, `pico ${medidor.pico} passou de max_total ${maxTotal}`)
+  }
+}
+
+const ACHADO_DO_REVISOR = { onde: 'src/login.tsx:42', problema: 'senha enviada sem validar o tamanho', gravidade: 'alta' }
+
+function tarefaComRevisao(id, extra = {}) {
+  return { ...tarefa(id), revisao: true, ...extra }
+}
+
+async function cenarioRevisorAnexadoEmParaleloAoTester() {
+  const { retorno, chamadas } = await rodarWorkflow('executar-lote', { tarefas: [tarefaComRevisao('r1')] }, porRotulo({
+    'r1 · dev #1': devOk(),
+    'r1 · tester #1': testerCom('PASSOU'),
+    'r1 · revisor #1': { achados: [ACHADO_DO_REVISOR] },
+  }))
+  assert.deepEqual(chamadas.map((chamada) => chamada.label).sort(), ['r1 · dev #1', 'r1 · revisor #1', 'r1 · tester #1'])
+  assert.equal(chamadas[0].label, 'r1 · dev #1', 'revisor e tester só saem depois do dev')
+  const revisor = chamadas.find((chamada) => chamada.label === 'r1 · revisor #1')
+  assert.equal(revisor.agentType, 'forge:scout')
+  const itemDoAchado = revisor.schema.properties.achados.items
+  assert.equal(itemDoAchado.additionalProperties, false)
+  assert.deepEqual(itemDoAchado.required, ['onde', 'problema', 'gravidade'])
+  for (const trecho of ['implementar r1', 'src/login.tsx']) assert.ok(revisor.prompt.includes(trecho), `prompt do revisor sem "${trecho}"`)
+  assert.equal(retorno[0].status_final, 'PASSOU', 'revisor não muda o status_final')
+  assert.deepEqual(retorno[0].revisao, [ACHADO_DO_REVISOR])
+}
+
+async function cenarioRevisorComBriefingProprio() {
+  const lote = [tarefaComRevisao('r2', { briefing_revisor: 'foque só na validação de entrada' })]
+  const { chamadas } = await rodarWorkflow('executar-lote', { tarefas: lote }, porRotulo({
+    'r2 · dev #1': devOk(),
+    'r2 · tester #1': testerCom('PASSOU'),
+    'r2 · revisor #1': { achados: [] },
+  }))
+  const { prompt } = chamadas.find((chamada) => chamada.label === 'r2 · revisor #1')
+  assert.ok(prompt.includes('foque só na validação de entrada') && prompt.includes('src/login.tsx'), 'briefing próprio e arquivos alterados')
+  assert.ok(!prompt.includes('implementar r2'), 'briefing_revisor substitui a abertura derivada do briefing_dev')
+}
+
+async function cenarioAchadosDoRevisorVaoParaODevNoFalhou() {
+  const { retorno, chamadas } = await rodarWorkflow('executar-lote', { tarefas: [tarefaComRevisao('r3')] }, porRotulo({
+    'r3 · dev #1': devOk(),
+    'r3 · tester #1': testerCom('FALHOU', { falhas: [FALHA_DO_LOGIN], recomendacao_para_dev: 'ligar o onClick' }),
+    'r3 · revisor #1': { achados: [ACHADO_DO_REVISOR] },
+    'r3 · dev #2': devOk(),
+    'r3 · tester #2': testerCom('PASSOU'),
+    'r3 · revisor #2': { achados: [] },
+  }))
+  const devDeCorrecao = chamadas.find((chamada) => chamada.label === 'r3 · dev #2')
+  for (const trecho of [FALHA_DO_LOGIN.descricao, 'ligar o onClick', ACHADO_DO_REVISOR.problema, ACHADO_DO_REVISOR.onde]) {
+    assert.ok(devDeCorrecao.prompt.includes(trecho), `correção sem "${trecho}"`)
+  }
+  assert.equal(retorno[0].status_final, 'PASSOU')
+  assert.deepEqual(retorno[0].revisao, [], 'resultado traz a revisão da última tentativa')
+}
+
+async function cenarioRevisorSemRetornoEIgnorado() {
+  const responder = (_prompt, { label }) => {
+    if (label.includes('revisor')) throw new Error('scout caiu')
+    return label.includes('dev') ? devOk() : testerCom('PASSOU')
+  }
+  const comErro = await rodarWorkflow('executar-lote', { tarefas: [tarefaComRevisao('r4')] }, responder)
+  assert.equal(comErro.retorno[0].status_final, 'PASSOU')
+  assert.equal(comErro.retorno[0].revisao, null)
+  const comNulo = await rodarWorkflow('executar-lote', { tarefas: [tarefaComRevisao('r5')] }, porRotulo({
+    'r5 · dev #1': devOk(),
+    'r5 · tester #1': testerCom('PASSOU'),
+    'r5 · revisor #1': null,
+  }))
+  assert.equal(comNulo.retorno[0].status_final, 'PASSOU')
+  assert.equal(comNulo.retorno[0].revisao, null)
+}
+
+async function cenarioSemRevisaoNaoChamaRevisor() {
+  const { retorno, chamadas } = await rodarWorkflow('executar-lote', { tarefas: [tarefa('r6')] }, porRotulo({
+    'r6 · dev #1': devOk(),
+    'r6 · tester #1': testerCom('PASSOU'),
+  }))
+  assert.equal(chamadas.length, 2)
+  assert.equal(retorno[0].revisao, null)
+}
+
+async function cenarioRevisaoComTesteNenhum() {
+  const lote = [{ ...tarefaComRevisao('r7'), teste: 'nenhum' }]
+  const { retorno, chamadas } = await rodarWorkflow('executar-lote', { tarefas: lote }, porRotulo({
+    'r7 · dev #1': devOk(),
+    'r7 · revisor #1': { achados: [ACHADO_DO_REVISOR] },
+  }))
+  assert.deepEqual(chamadas.map((chamada) => chamada.label), ['r7 · dev #1', 'r7 · revisor #1'])
+  assert.equal(retorno[0].status_final, 'SEM_TESTE')
+  assert.deepEqual(retorno[0].revisao, [ACHADO_DO_REVISOR])
+}
+
+async function cenarioRevisaoInvalidaRejeitada() {
+  await assert.rejects(() => rodarWorkflow('executar-lote', { tarefas: [{ ...tarefa('r8'), revisao: 'sim' }] }, porRotulo({})), /tarefas inválidas: r8/)
 }
 
 function achado(onde) {
@@ -360,6 +585,25 @@ const CENARIOS = [
   ['executar-lote: dev null vira BLOQUEADO', cenarioDevNulo],
   ['executar-lote: FALHOU após o máximo de tentativas', cenarioFalhaAposMaxTentativas],
   ['executar-lote: testers browser em fila, contrato em paralelo', cenarioTestersBrowserEmFila],
+  ['executar-lote: max_paralelo limita devs simultâneos', cenarioMaxParaleloLimitaDevs],
+  ['executar-lote: sem max_paralelo o padrão é 6', cenarioMaxParaleloPadraoSeis],
+  ['executar-lote: max_paralelo acima de 16 é cortado em 16', cenarioMaxParaleloCorteEmDezesseis],
+  ['executar-lote: max_paralelo abaixo de 1 vira 1', cenarioMaxParaleloMinimoUm],
+  ['executar-lote: max_paralelo não inteiro é rejeitado', cenarioMaxParaleloInvalidoRejeitado],
+  ['executar-lote: max_paralelo limita testers de contrato', cenarioMaxParaleloLimitaTestersDeContrato],
+  ['executar-lote: max_total padrão 12 limita dev+tester+revisor juntos', cenarioMaxTotalPadraoDoze],
+  ['executar-lote: max_total limita o lote todo', cenarioMaxTotalLimitaOLoteTodo],
+  ['executar-lote: max_total acima de 16 é cortado em 16', cenarioMaxTotalCorteEmDezesseis],
+  ['executar-lote: max_paralelo acima de max_total usa max_total', cenarioMaxParaleloAcimaDeMaxTotal],
+  ['executar-lote: max_total vale também para tester browser', cenarioMaxTotalInclusiveTesterBrowser],
+  ['executar-lote: sem deadlock em FALHOU → correção com max_total 1 e 2', cenarioMaxTotalSemDeadlockNaCorrecao],
+  ['executar-lote: revisor forge:scout em paralelo ao tester, achados em resultado.revisao', cenarioRevisorAnexadoEmParaleloAoTester],
+  ['executar-lote: briefing_revisor substitui a abertura derivada', cenarioRevisorComBriefingProprio],
+  ['executar-lote: achados do revisor vão ao dev na correção do FALHOU', cenarioAchadosDoRevisorVaoParaODevNoFalhou],
+  ['executar-lote: revisor sem retorno ou com erro é ignorado', cenarioRevisorSemRetornoEIgnorado],
+  ['executar-lote: sem revisao não há revisor', cenarioSemRevisaoNaoChamaRevisor],
+  ['executar-lote: revisao com teste nenhum revisa mesmo assim', cenarioRevisaoComTesteNenhum],
+  ['executar-lote: revisao não booleana invalida a tarefa', cenarioRevisaoInvalidaRejeitada],
   ['investigar: achado refutado, teto de 8 e lacunas', cenarioInvestigarComRefutacao],
   ['investigar: achado sem veredito fica não verificado', cenarioInvestigarVereditoFaltando],
   ['investigar: veredito com índice inválido ou repetido é ignorado', cenarioInvestigarIndiceInvalidoIgnorado],

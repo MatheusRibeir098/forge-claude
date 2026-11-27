@@ -47,8 +47,9 @@ Limites que você precisa respeitar:
 - **PARCIAL só de validação.** `dev` com `status: PARCIAL`, `build_ok: true` e
   `so_falta_validacao: true` (falta só ver a UI ou bater na app) segue para o `tester` quando a
   tarefa tem teste; qualquer outro `PARCIAL` volta a você com `proximo_briefing`.
-- **Arquivos disjuntos no lote.** Os `dev` rodam em paralelo; tarefas que se tocam vão em lotes
-  diferentes (ver "Como particionar sem colisão").
+- **Arquivos disjuntos no lote.** Os `dev` rodam em paralelo na mesma árvore de trabalho (sem
+  worktree por `dev`); tarefas que se tocam vão em lotes diferentes (ver "Como particionar sem
+  colisão"). Largura e revisão: ver "`executar-lote`: largura e revisão".
 
 **Fallback manual** (ferramenta Workflow ausente, desligada por `disableWorkflows` ou CLI
 antiga): conduza com `Agent` como descrito nas seções seguintes. Lembre que o **`Agent` é
@@ -72,8 +73,11 @@ O resto desta skill assume backlog de código (`tasks.md`, `dev`, `tester`). O *
 segue diferente:
 
 - O **`scout` é o papel principal**, não o `dev`. O caminho é o Workflow `forge:investigar`
-  (um `scout` por frente, um `scout` cético que tenta refutar os achados e uma checagem de
-  completude). No fallback, dispare quantos `scout` fizerem sentido, todos na mesma mensagem:
+  (um `scout` por frente, depois do scout de cada frente um scout cético que confere em lote
+  até 8 achados daquela frente; com até 8 frentes, o workflow escalona scout e cético por
+  frente, pois o Workflow aceita até 16 agentes simultâneos — e uma checagem de completude).
+  No fallback, dispare um `scout` por frente (teto 8; mínimo 3 para ler/entender/analisar um
+  projeto), todos na mesma mensagem:
   são só-leitura, nunca colidem (checkpoint abaixo vale igual aqui, sem o cuidado de arquivos
   disjuntos). Em investigação que toque banco ou data lake, indique a skill
   `banco-de-dados-leitura-segura`.
@@ -87,12 +91,65 @@ segue diferente:
 
 **Mecânica:** subagentes só rodam em paralelo se as chamadas da ferramenta `Agent` estiverem **na
 mesma mensagem**. Uma por mensagem = fila sequencial, mesmo com trabalhos independentes. (No
-Workflow `forge:executar-lote` o paralelismo dos `dev` do lote já vem do script.)
+Workflow `forge:executar-lote` o paralelismo dos `dev` do lote já vem do script — ver
+"`executar-lote`: largura e revisão".)
 
-### Checkpoint de paralelismo (rode antes de cada invocação)
+### Planejar a largura (antes de todo despacho)
 
-Toda vez que estiver prestes a invocar um subagente, responda a estas quatro perguntas — se
-alguma der "sim", inclua o trabalho na mesma mensagem:
+Antes de **todo** despacho de subagente (`Agent` ou Workflow), escreva na própria mensagem um
+**plano de largura** de até 3 linhas:
+
+1. **Prontas agora:** as frentes ou tarefas independentes que já podem sair (lista curta).
+2. **Lote:** quantos agentes por papel — `scout` N, `dev` N, `tester` N, revisor N — e o total.
+3. **Abaixo do teto?** Se o lote ficou abaixo do teto do papel e ainda há trabalho pronto, diga
+   por quê: dependência real, arquivo em comum, navegador único ou RAM.
+
+**O padrão é o máximo útil até o teto, não 1.** Um agente sozinho só sai quando a demanda é de
+uma frente ou de uma tarefa de verdade. Se o plano sai com 1, releia a demanda procurando o que
+dá para fatiar (frentes de leitura, tarefas atômicas, testes, docs, infra, tipos). No
+`executar-lote`, a linha 2 conta as tarefas e os papéis previstos (`dev` = tarefas; `tester` =
+tarefas com teste; revisor = tarefas com `revisao: true`); o script corta no `max_total`.
+
+**Tetos (simultâneos, por lote):**
+
+| Papel | Teto |
+|---|---|
+| **Total** | **12** |
+| `scout` | 8 |
+| `dev` | 6, com arquivos disjuntos; acima de 4 `dev` rodando build pesado, avise o usuário sobre a RAM da máquina |
+| `tester` modo `contrato` | 6, em paralelo |
+| `tester` modo `browser` | 1 por vez (fila). Enquanto ele roda, `tester` de contrato e revisores seguem em paralelo |
+| Revisor (`forge:scout`) | conta no teto de `scout` (8) e no total (12) |
+
+Os tetos ficam abaixo dos limites técnicos do Claude Code, que nunca podem ser passados: 20
+subagentes simultâneos na ferramenta `Agent` (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`) e 16
+agentes simultâneos num Workflow.
+
+**Escala por papel:**
+
+- **`scout`** — um por frente independente: pasta, camada, módulo, fonte externa ou pergunta.
+  Ler/entender/analisar um projeto (conhecido ou não): **mínimo 3 scouts, um por frente** (ex.:
+  dados e backend, front e UI, infra e testes e docs); pergunta pontual de uma frente só: 1
+  scout. Pesquisa na web: um por tema ou fonte. **Se o usuário pediu scouts/agentes
+  explicitamente**, não leia sozinho na raiz: despache 3 ou mais (ou um por frente, se houver
+  menos frentes) antes de qualquer leitura própria além de 1 ou 2 arquivos já conhecidos.
+- **`dev`** — decomponha em tarefas atômicas (1 a 3 arquivos e um contrato; ver "Decompor em
+  tarefas atômicas"). Todas as tarefas com dependências satisfeitas e arquivos disjuntos saem
+  **no mesmo lote**. Contrato compartilhado vira uma tarefa anterior curta. Com uma tarefa só,
+  confira se testes, docs, infra ou tipos dão tarefas paralelas. Quando um `dev` volta, o
+  `tester` dele e o próximo lote de `dev` prontos saem **na mesma mensagem**.
+- **`tester`** — um por entrega com teste diferente de nenhum. Todos os de `contrato` em
+  paralelo; os de `browser` em fila.
+- **Revisor** — quando a entrega mexe em mais de 3 arquivos ou em regra crítica (segurança,
+  autorização, dinheiro, dados pessoais, migração), despache em paralelo ao `tester` um
+  `forge:scout` revisor: ele lê o diff contra o aceite da tarefa e devolve achados com
+  `arquivo:linha`. **O revisor não aprova nem reprova** — o veredito é do `tester`; achado
+  confirmado vira correção do `dev`.
+
+### Checkpoint de paralelismo (rode depois do plano, antes de cada invocação)
+
+O plano de largura diz quanto cabe; o checkpoint procura **onde está o trabalho** que enche o
+lote. Cada "sim" entra na mesma mensagem:
 
 1. **Tarefas irmãs** — há outra tarefa em `tasks.md` cujas dependências já estão satisfeitas
    e que mexe em **arquivos diferentes**? → mais um `dev`.
@@ -101,10 +158,17 @@ alguma der "sim", inclua o trabalho na mesma mensagem:
 3. **Validação em pipeline** — a tarefa anterior já entregou? → o `tester` dela roda junto
    com o `dev` da atual (exceto `tester` em modo `browser`, que é serial — ver tabela).
 4. **Segunda opinião** — a entrega é arriscada, tem alegação de "funciona" não verificada, ou
-   toca segurança/credencial/dinheiro? → um agente de verificação independente em paralelo.
+   toca segurança/credencial/dinheiro? → um revisor independente em paralelo.
 
-Se as quatro derem "não", aí sim invoque só um — e diga ao usuário que este trecho é
-serial **por dependência**, não por esquecimento.
+**Ficar abaixo do teto exige um destes motivos**, ditos ao usuário na linha 3 do plano:
+**dependência** (a tarefa precisa do retorno de outra), **arquivo em comum** (a interseção não
+zera), **navegador único** (só um `tester` `browser` por vez) ou **RAM** (builds pesados demais
+para rodar juntos). Esquecimento, hábito e "custa mais" não contam.
+
+**Paralelismo não é motivo para evitar o fan-out por custo:** o que encarece é o número de
+turnos de cada invocação, não o número de agentes. Cada agente começa com contexto limpo e
+termina cedo; o custo se controla com briefings enxutos, 1–2 skills por briefing e tarefas
+atômicas — não com menos agentes. Mantenha o Invariante 5.
 
 ### O que paraleliza bem × o que não
 
@@ -135,9 +199,31 @@ serial **por dependência**, não por esquecimento.
    risco de `stash`, `checkout` e builds cruzados. Antes de `git worktree remove`, confira `git status`
    limpo; nunca use `--force` sem perguntar ao usuário.
 
-**Teto prático: 3–4 `dev` simultâneos.** Acima disso a revisão vira gargalo e os conflitos
-aparecem. Vários agentes no mesmo módulo geram
+**Teto prático: 6 `dev` simultâneos** (tabela de tetos em "Planejar a largura"). Mais `dev` só
+ajudam se os arquivos forem de fato disjuntos: vários agentes no mesmo módulo geram
 retrabalho — o problema não é paralelizar, é paralelizar trabalho acoplado.
+
+### `executar-lote`: largura e revisão
+
+Dois controles do Workflow, ambos opcionais:
+
+- **`max_total`** (argumento do workflow): teto **global** de agentes simultâneos do lote.
+  Padrão **12**, corte em **16** (o limite de agentes de um Workflow). Conta `dev`, `tester`
+  (contrato e browser) e revisor.
+- **`max_paralelo`** (argumento do workflow): limita cada papel (`dev`, `tester` de `contrato`,
+  revisor). Padrão **6**, mínimo 1, corte duro em **16**; o efetivo é
+  `min(max_paralelo, max_total)`. O `browser` segue em fila de 1. Baixe `max_paralelo` só por
+  RAM ou build pesado; acima de 4 `dev` com build pesado, avise o usuário.
+- **`revisao: true`** (por tarefa; `briefing_revisor` opcional): dispara um `forge:scout`
+  revisor em paralelo ao `tester` da tarefa. Os achados voltam no resultado da tarefa, em
+  `revisao`; se o `tester` der `FALHOU`, vão junto para o `dev` na correção. O revisor não
+  decide o `status_final`, e revisor sem retorno é ignorado. Marque `revisao: true` nas
+  tarefas que se encaixam na regra do revisor (acima).
+
+**Os `dev` do workflow compartilham a árvore de trabalho** — não há worktree por `dev` ali. A
+proteção é a **disjunção de arquivos** entre as tarefas do lote: confira-a antes de chamar (ver
+"Como particionar sem colisão"). A worktree por `dev` (item 5) vale para o fallback manual
+com `Agent`.
 
 ### Sessões concorrentes
 
@@ -199,7 +285,7 @@ fluxo fix):
 
 1. Leia o `prompt.md` (criar) ou a descrição do bug/feature (fix).
 2. Quebre em **tarefas atômicas**, cada uma:
-   - completável em **~35 chamadas de ferramenta** pelo `dev` (o teto do hook) — na prática,
+   - completável em **35 chamadas de ferramenta (aviso em 25)** pelo `dev` (o teto do hook) — na prática,
      1 a 3 arquivos e um contrato só;
    - com critério de aceitação próprio (Given/When/Then — ver skill `spec-driven`);
    - listando os arquivos que serão criados/alterados;
@@ -391,8 +477,9 @@ sobe por defeito do código **não** é `BLOQUEADO`: é `FALHOU` com `tipo: "bui
 
 - "Pronto" só com **`PASSOU` do `tester` posterior ao último retorno de `dev`**. Se o `dev`
   mexeu de novo depois do `PASSOU`, o veredito caducou.
-- **Pacote ou entrega** (zip, publicação, release) só fecha **depois** do `PASSOU` do crítico
-  ou do `tester` — nunca antes.
+- **Pacote ou entrega** (zip, publicação, release) só fecha **depois** do `PASSOU` do `tester`
+  — nunca antes. O revisor não aprova: achado dele confirmado volta como correção do `dev`, e o
+  `PASSOU` que vale é o posterior a ela.
 - Em entrega visual, **você abre a evidência** (uma imagem) antes de aprovar.
 - Ao pedir aprovação, **copie para o usuário os defeitos conhecidos** (`falhas`, `pendencias`)
   em vez de omiti-los.
@@ -461,13 +548,12 @@ uma das alavancas de custo mais fortes do Forge**, ao lado do modelo e do volume
 | **Bash** | a saída de cada comando entra no contexto e é reenviada nos turnos seguintes | No briefing: `Read` (arquivo conhecido) e `command grep -rn`/`find` com filtro e limite, em vez de `cat`; filtrar na fonte (`Grep`/`Glob` estão liberados na sessão, mas podem faltar no runtime do subagente) |
 | **`Read` de arquivo inteiro** | o arquivo todo fica no contexto pelo resto da invocação | Nomeie os arquivos, exija `limit`/`offset`, proíba releitura |
 | **Modelo** | modelos maiores consomem mais por invocação | `sonnet` padrão; opus só em arquitetura/Loop Travado. Os três já fixam `model` no frontmatter — não sobrescreva |
-| **Lote acoplado** | agentes no mesmo módulo geram conflito e retrabalho | Arquivos disjuntos, teto de 3–4 |
+| **Lote acoplado** | agentes no mesmo módulo geram conflito e retrabalho | Arquivos disjuntos; tetos do plano de largura |
 | **Evidências visuais** | imagens ocupam contexto | Teto de 5/tarefa, você só lê o JSON. Não corte validação por economia |
 | **Varredura no seu próprio contexto** | o contexto principal cresce e é reenviado a cada turno | Delegue ao `scout`: o lixo da busca morre com ele |
 
-**Paralelismo não é motivo para evitar o fan-out por custo:** o que encarece é o número de
-turnos de cada invocação, não o número de agentes. Meça no seu projeto. Mantenha o
-Invariante 5.
+**Economizar tokens é briefing enxuto, 1–2 skills por briefing e tarefa atômica — não menos
+agentes** (ver o fim do "Checkpoint de paralelismo"). Meça no seu projeto.
 
 Ajustando esforço da sessão: decompor e revisar JSON não pedem `/effort` alto — reserve
 `high`/`xhigh` para arquitetura e Loop Travado.
